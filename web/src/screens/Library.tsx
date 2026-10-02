@@ -9,7 +9,23 @@ import { Thumb } from '../ui/Thumb'
 import { HoverCard } from '../ui/HoverCard'
 
 export const GRID_AREA: Rect = { x: 584, y: 212, w: 1240, h: 560 }
-export const GRID_COLS = 24
+/** Columns chosen so the last row is as full as possible (no orphan tile). */
+export const GRID_COLS = (() => {
+  const n = ingestOrder.length
+  let best = 24
+  let bestFill = -1
+  for (let cols = 22; cols <= 26; cols++) {
+    const w = (GRID_AREA.w - 5 * (cols - 1)) / cols
+    const rows = Math.ceil(n / cols)
+    if (rows * ((w * 9) / 16 + 5) > 600) continue
+    const fill = n % cols === 0 ? 1 : (n % cols) / cols
+    if (fill > bestFill + 0.05) {
+      best = cols
+      bestFill = fill
+    }
+  }
+  return best
+})()
 export const GRID_GAP = 5
 
 const cells = gridCells(ingestOrder.length, GRID_AREA, GRID_COLS, GRID_GAP)
@@ -172,7 +188,7 @@ function Pipeline({ stages, elapsed }: { stages: IngestStage[]; elapsed: number 
             </div>
             <div className="mt-3 flex items-baseline gap-2.5">
               <span className={`tnum font-mono text-[44px] font-light leading-none tracking-[-0.03em] transition-colors duration-500 ${state === 'idle' ? 'text-ink-3' : 'text-ink'}`}>
-                {Math.round(s.total * p).toLocaleString('en-US')}
+                <MonoNumber value={Math.round(s.total * p)} />
               </span>
               <span className="text-[18px] text-ink-2">{s.unit}</span>
             </div>
@@ -187,6 +203,21 @@ function Pipeline({ stages, elapsed }: { stages: IngestStage[]; elapsed: number 
         )
       })}
     </div>
+  )
+}
+
+/** Geist Mono gives the thousands comma a full cell; tuck it in so 2,352 reads as one number. */
+export function MonoNumber({ value }: { value: number }) {
+  const parts = value.toLocaleString('en-US').split(',')
+  return (
+    <>
+      {parts.map((p, i) => (
+        <span key={i}>
+          {i > 0 && <span className="-mx-[0.14em]">,</span>}
+          {p}
+        </span>
+      ))}
+    </>
   )
 }
 

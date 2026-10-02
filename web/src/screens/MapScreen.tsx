@@ -9,7 +9,7 @@ import { HoverCard } from '../ui/HoverCard'
 import { GRID_COLS } from './Library'
 import { ExpertClip } from '../ui/ExpertClip'
 
-const AREA: Rect = { x: 96, y: 176, w: 1728, h: 800 }
+const AREA: Rect = { x: 96, y: 200, w: 1728, h: 776 }
 const GRID_AREA: Rect = { x: 96, y: 196, w: 1728, h: 780 }
 const STAGGER = 260
 const DUR = 1250
@@ -155,6 +155,24 @@ export function MapScreen() {
             </motion.button>
           )
         })}
+        {(() => {
+          const ours = layout?.clusters.filter((g) => g.source === 'ours') ?? []
+          if (!ours.length) return null
+          const top = Math.min(...ours.map((g) => g.box.y))
+          const left = Math.min(...ours.map((g) => g.box.x))
+          const on = ours.every((g) => settled.has(g.id))
+          return (
+            <motion.div
+              className="absolute whitespace-nowrap font-mono text-[16px] text-ink-2"
+              style={{ left, top: top - 34 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: on ? (selected ? 0.2 : 1) : 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              Our recordings · {ours.reduce((n, g) => n + g.count, 0)} takes
+            </motion.div>
+          )
+        })()}
         {layout?.chips.map(({ clip, rect, sloppy }) => {
           const on = settled.has(clip.cluster_id ?? '')
           const dim = selected && selected !== clip.cluster_id
@@ -183,7 +201,8 @@ export function MapScreen() {
           <span>1 tile = 1 clip</span>
           <span>position = Cosmos Embed similarity</span>
           <span>
-            <span className="text-err">52</span> = take below the learned standard
+            <span className="text-err">{Math.min(...library.clips.filter((c) => c.source === 'ours').map((c) => c.score ?? 100))}</span> = take below the learned
+            standard
           </span>
         </motion.div>
       )}
@@ -240,7 +259,7 @@ function StepsPanel({ cluster, onClose }: { cluster: Cluster; onClose: () => voi
               <span className="tnum w-8 font-mono text-[20px] text-ink-3">{String(i + 1).padStart(2, '0')}</span>
               <span className="flex-1 text-[26px] leading-tight tracking-[-0.01em] text-ink">{step.text}</span>
               <div className="relative">
-                <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={i} className="h-[90px] w-[160px] rounded-[8px]" />
+                <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={i + 1} className="h-[90px] w-[160px] rounded-[8px]" />
                 <span className="tnum absolute bottom-1.5 right-1.5 rounded-[4px] bg-stage/80 px-1.5 font-mono text-[13px] text-ink-2">
                   {fmtS(step.expert_start_s)}–{fmtS(step.expert_end_s)}
                 </span>

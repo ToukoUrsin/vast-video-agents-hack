@@ -48,6 +48,6 @@ Cosmos Reason to pick when the margin is small.
   steps are learned from the best take, and expert clips come from the transcoded take MP4s.
 
 ```bash
-uv run upload_recording.py ~/takes/box1.mp4 --task packing-box --label "Packing a box" --take 1 --score 94
+uv run upload_recording.py ~/takes/lego1.mp4 --task lego-tower --label "Lego assembly" --take 1 --score 95
 uv run build_map.py --refresh
 ```

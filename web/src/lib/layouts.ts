@@ -62,7 +62,7 @@ export interface MapLayout {
   settleAt: Map<string, number>
 }
 
-const ARCHIVE_TILE = { w: 38, h: 21.4, gap: 3 }
+const ARCHIVE_TILE = { w: 35, h: 19.7, gap: 3 }
 const TAKE_TILE = { w: 136, h: 76.5, gap: 8 }
 const NOISE_TILE = { w: 24, h: 13.5 }
 
@@ -258,7 +258,8 @@ export function clusterLayout(
       x,
       y,
       ...NOISE_TILE,
-      alpha: blocked ? 0 : 0.32,
+      // unclustered clips stay hidden on the map: they read as debris at projector distance
+      alpha: blocked ? 0 : 0,
       delay: noiseDelay + (opts.animate ? (i / noise.length) * 300 : 0),
       dur: opts.dur,
     })

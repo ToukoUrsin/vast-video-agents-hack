@@ -11,9 +11,9 @@ export type SceneKind =
   | 'street'
   | 'city'
   | 'indoor'
-  | 'task-box'
-  | 'task-tea'
-  | 'task-gear'
+  | 'task-lego'
+  | 'task-cups'
+  | 'task-pour'
 
 export interface Clip {
   clip_id: string

@@ -26,6 +26,10 @@ export interface CoachState {
   utterance: Utterance | null
   /** bumps each time a step completes, drives the tick animation + chime */
   tick: number
+  /** when the last correction was spoken; corrections repeat at most every 6 s */
+  lastCorrectionAt: number
+  /** checker / recognizer could not be reached; shown in the status line */
+  error: string | null
   result: SessionResult | null
 }
 
@@ -33,6 +37,7 @@ export type CoachEvent =
   | { type: 'START'; now: number }
   | { type: 'TASK_DETECTED'; task: Cluster; now: number }
   | { type: 'CHECK'; result: CheckResult; latencyMs: number; now: number; frameUrl: string | null }
+  | { type: 'ERROR'; error: string | null }
   | { type: 'RESET' }
 
 export const initialCoach: CoachState = {
@@ -48,7 +53,11 @@ export const initialCoach: CoachState = {
   utterance: null,
   tick: 0,
   result: null,
+  lastCorrectionAt: 0,
+  error: null,
 }
+
+export const CORRECTION_REPEAT_MS = 6000
 
 let uid = 1
 const say = (text: string, tone: Utterance['tone'] = 'info'): Utterance => ({ id: uid++, text, tone })
@@ -61,11 +70,15 @@ export function coachReducer(s: CoachState, e: CoachEvent): CoachState {
     case 'START':
       if (s.phase !== 'idle') return s
       return { ...initialCoach, phase: 'detecting', startedAt: e.now }
+    case 'ERROR':
+      return s.error === e.error ? s : { ...s, error: e.error }
     case 'TASK_DETECTED': {
-      if (s.phase !== 'detecting') return s
+      if (s.phase !== 'detecting' && s.phase !== 'idle') return s
       const first = e.task.steps[0]
       return {
         ...s,
+        startedAt: s.phase === 'idle' ? e.now : s.startedAt,
+        error: null,
         phase: 'coaching',
         task: e.task,
         stepIndex: 0,
@@ -76,7 +89,8 @@ export function coachReducer(s: CoachState, e: CoachEvent): CoachState {
     case 'CHECK': {
       if (s.phase !== 'coaching' || !s.task) return s
       const t = (e.now - s.startedAt) / 1000
-      const base = { ...s, lastLatencyMs: e.latencyMs }
+      const base = { ...s, lastLatencyMs: e.result.error ? s.lastLatencyMs : e.latencyMs, error: e.result.error ?? null }
+      if (e.result.error) return base
       const { result } = e
       if (result.done) {
         const steps = s.steps.map((r, i) =>
@@ -118,9 +132,14 @@ export function coachReducer(s: CoachState, e: CoachEvent): CoachState {
           ...base,
           stepStatus: 'mistake',
           issue: result.issue,
+          lastCorrectionAt: e.now,
           mistakes: [...s.mistakes, { stepIndex: s.stepIndex, issue: result.issue, at: t, frameUrl: e.frameUrl }],
           utterance: say(result.issue, 'error'),
         }
+      }
+      if (result.issue && s.stepStatus === 'mistake' && e.now - s.lastCorrectionAt >= CORRECTION_REPEAT_MS) {
+        // still wrong: repeat the correction, but never more than once per 6 s
+        return { ...base, issue: result.issue, lastCorrectionAt: e.now, utterance: say(result.issue, 'error') }
       }
       return base
     }

@@ -1,8 +1,8 @@
 """Upload our own task recordings to VSS so the real pipeline indexes them
 (segment -> YOLO -> Cosmos Reason with our step-by-step prompt -> Cosmos Embed -> VastDB).
 
-  uv run upload_recording.py takes/box_1.mp4 --task packing-box --label "Packing a box" --take 1 --score 94
-  uv run upload_recording.py takes/box_3.mp4 --task packing-box --take 3 --score 52   # sloppy take
+  uv run upload_recording.py takes/lego_1.mp4 --task lego-tower --label "Lego assembly" --take 1 --score 95
+  uv run upload_recording.py takes/lego_3.mp4 --task lego-tower --take 3 --score 54   # sloppy take
   uv run upload_recording.py ... --dry-run      # print the request, upload nothing
 
 Metadata convention read back by build_map.py:
@@ -25,7 +25,7 @@ from upstreams import VSS
 STEP_PROMPT = (
     "This video shows a person performing a hands-on task at a workbench: {label}. "
     "Describe each step of the task being performed, in order, as short imperative steps "
-    "(for example 'Fold the bottom flaps', 'Tape the bottom seam'). For each step say what the hands "
+    "(for example 'Put a red brick on it', 'Close the bottle cap'). For each step say what the hands "
     "do, which objects and tools are used, and whether it was done correctly and completely. "
     "Point out anything skipped, done out of order, or done sloppily. "
     "Be concrete and visual; do not guess at things not visible."
@@ -48,8 +48,8 @@ def ensure_size(path: Path, max_mb: int) -> Path:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("files", nargs="+", type=Path)
-    ap.add_argument("--task", required=True, help="task id, e.g. packing-box")
-    ap.add_argument("--label", help='display label, e.g. "Packing a box" (default from --task)')
+    ap.add_argument("--task", required=True, help="task id, e.g. lego-tower")
+    ap.add_argument("--label", help='display label, e.g. "Lego assembly" (default from --task)')
     ap.add_argument("--take", type=int, help="take number of the first file; later files count up (default 1)")
     ap.add_argument("--score", type=int, help="optional quality score 0-100 for this take")
     ap.add_argument("--camera", default="bench-cam1")

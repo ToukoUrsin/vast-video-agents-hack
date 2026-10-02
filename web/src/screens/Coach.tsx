@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, useKeys } from '../app/context'
-import { getCluster, tasks } from '../data'
-import { HttpStepChecker, MockStepChecker, MockTaskRecognizer } from '../coach/checkers'
+import { getCluster, library, tasks } from '../data'
+import type { Cluster } from '../data/types'
+import { Thumb } from '../ui/Thumb'
+import { HttpStepChecker, HttpTaskRecognizer, MockStepChecker, MockTaskRecognizer } from '../coach/checkers'
 import { useCamera, useCoach, type CameraState } from '../coach/useCoach'
 import type { CoachState } from '../coach/machine'
 import { expertClipFor, fmt } from '../coach/scoring'
@@ -14,13 +16,23 @@ const VIDEO = { x: 96, y: 152, w: 1184, h: 666 }
 export function Coach() {
   const { setSession } = useApp()
   const { videoRef, camera, retry } = useCamera()
-  const task = getCluster(params.get('task') ?? 'packing-box') ?? tasks()[0]
-  // Rehearsal adapters. Swap for HttpStepChecker / an embed-based recognizer when the server is up.
+  const task = getCluster(params.get('task') ?? 'lego-tower') ?? tasks()[0]
+  // Live by default (Cosmos via our server). ?checker=mock = rehearsal: N / M drive the steps.
+  const rehearsal = params.get('checker') === 'mock'
   const mock = useMemo(() => new MockStepChecker(), [])
-  const checker = useMemo(() => (params.get('checker') === 'http' ? new HttpStepChecker() : mock), [mock])
-  const rehearsal = checker === mock
-  const recognizer = useMemo(() => new MockTaskRecognizer(task, 2000), [task])
-  const { state, start, reset } = useCoach({ video: videoRef, checker, recognizer, voice: !params.has('mute') })
+  const checker = useMemo(() => (rehearsal ? mock : new HttpStepChecker()), [mock, rehearsal])
+  const recognizer = useMemo(
+    () => (rehearsal ? new MockTaskRecognizer(task, 1500) : new HttpTaskRecognizer((k) => getCluster(k) ?? tasks().find((t) => t.label.toLowerCase() === k.toLowerCase()))),
+    [task, rehearsal],
+  )
+  const { state, start, reset, forceTask } = useCoach({
+    video: videoRef,
+    checker,
+    recognizer,
+    voice: !params.has('mute'),
+    requiredDone: rehearsal ? 1 : 2,
+  })
+  const [forced, setForced] = useState(false)
   const [now, setNow] = useState(performance.now())
 
   useEffect(() => {
@@ -37,7 +49,15 @@ export function Coach() {
     ' ': () => state.phase === 'idle' && start(),
     r: () => {
       mock.clear()
+      setForced(false)
       reset()
+    },
+    // presenter fallback if recognition is slow: pick the main demo task by hand
+    t: () => {
+      if (state.phase === 'idle' || state.phase === 'detecting') {
+        setForced(true)
+        forceTask(task)
+      }
     },
     n: () => mock.push('done'),
     m: () => mock.push('mistake'),
@@ -111,7 +131,7 @@ export function Coach() {
         </AnimatePresence>
       </div>
 
-      <Rail state={state} elapsed={elapsed} rehearsal={rehearsal} />
+      <Rail state={state} elapsed={elapsed} rehearsal={rehearsal} forced={forced} />
 
     </div>
   )
@@ -170,7 +190,7 @@ function CorrectionCard({ state }: { state: CoachState }) {
       transition={{ type: 'spring', stiffness: 300, damping: 32 }}
     >
       <div className="relative">
-        <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={state.stepIndex} className="aspect-video w-full" />
+        <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={state.stepIndex + 1} className="aspect-video w-full" />
         <div className="absolute left-3 top-3 rounded-full bg-stage/80 px-3 py-1 font-mono text-[14px] text-ink">
           Expert · {clip?.take_label ?? 'best take'} · {fmt(step.expert_start_s)}
         </div>
@@ -193,11 +213,12 @@ function CorrectionCard({ state }: { state: CoachState }) {
   )
 }
 
-function Rail({ state, elapsed, rehearsal }: { state: CoachState; elapsed: number; rehearsal: boolean }) {
+function Rail({ state, elapsed, rehearsal, forced }: { state: CoachState; elapsed: number; rehearsal: boolean; forced: boolean }) {
   const task = state.task
   const latency = state.lastLatencyMs != null ? `${(state.lastLatencyMs / 1000).toFixed(1)} s` : null
   let status: { dot: string; text: string }
-  if (state.phase === 'idle') status = { dot: 'bg-ink-3', text: 'Ready' }
+  if (state.phase === 'idle') status = { dot: 'bg-ink-3', text: 'Camera ready' }
+  else if (state.error && state.phase !== 'complete') status = { dot: 'bg-wip', text: `Model unreachable · retrying` }
   else if (state.phase === 'detecting') status = { dot: 'bg-wip', text: 'Matching to the library' }
   else if (state.phase === 'complete') status = { dot: 'bg-go', text: `Complete · ${fmt(elapsed)}` }
   else if (state.stepStatus === 'mistake') status = { dot: 'bg-err', text: `Waiting for a fix${latency ? ` · ${latency}` : ''}` }
@@ -215,14 +236,16 @@ function Rail({ state, elapsed, rehearsal }: { state: CoachState; elapsed: numbe
           exit={{ opacity: 0 }}
           transition={{ type: 'spring', stiffness: 300, damping: 30 }}
         >
-          {task ? task.label : state.phase === 'detecting' ? 'Recognising…' : 'Waiting to start'}
+          {task ? task.label : state.phase === 'detecting' ? 'Recognising…' : 'Start any task'}
         </motion.h2>
       </AnimatePresence>
       {task && (
         <motion.p className="mt-2 font-mono text-[16px] text-ink-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-          matched · learned from 3 takes
+          {forced ? 'selected by presenter' : 'recognised'} · {task.steps.length} learned steps
         </motion.p>
       )}
+
+      {!task && <KnownTasks detecting={state.phase === 'detecting'} />}
 
       <div className="mt-10 flex flex-col">
         {task?.steps.map((step, i) => {
@@ -261,7 +284,9 @@ function Rail({ state, elapsed, rehearsal }: { state: CoachState; elapsed: numbe
         })}
       </div>
 
-      <div className="mt-auto flex items-center gap-3 border-t border-line pt-5">
+      <div className="mt-auto">
+      {task && state.phase === 'coaching' && state.stepStatus !== 'mistake' && <Reference task={task} stepIndex={state.stepIndex} />}
+      <div className="flex items-center gap-3 border-t border-line pt-5">
         <span className="relative flex h-2.5 w-2.5">
           {(state.phase === 'detecting' || state.phase === 'coaching') && (
             <span className={`absolute inset-0 animate-ping rounded-full opacity-40 ${status.dot}`} style={{ animationDuration: '2s' }} />
@@ -271,7 +296,58 @@ function Rail({ state, elapsed, rehearsal }: { state: CoachState; elapsed: numbe
         <span className="tnum font-mono text-[18px] text-ink-2">{status.text}</span>
         {rehearsal && <span className="ml-auto font-mono text-[15px] text-ink-3">rehearsal checker</span>}
       </div>
+      </div>
     </div>
+  )
+}
+
+/** Idle / recognising: the tasks Understudy has learned, so the rail is never empty. */
+function KnownTasks({ detecting }: { detecting: boolean }) {
+  return (
+    <div className="mt-10">
+      <p className="font-mono text-[16px] text-ink-3">Learned from our recordings</p>
+      <div className="mt-3 flex flex-col">
+        {tasks().map((t, i) => {
+          const best = library.clips.filter((c) => c.cluster_id === t.id).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]
+          return (
+            <motion.div
+              key={t.id}
+              className="flex h-[84px] items-center gap-5 border-t border-line"
+              animate={{ opacity: detecting ? [0.55, 1, 0.55] : 1 }}
+              transition={detecting ? { duration: 1.6, repeat: Infinity, delay: i * 0.25 } : { duration: 0.3 }}
+            >
+              <Thumb clip={best} className="h-[54px] w-[96px] shrink-0 rounded-[6px]" />
+              <span className="flex-1 text-[24px] tracking-[-0.01em] text-ink">{t.label}</span>
+              <span className="tnum font-mono text-[16px] text-ink-3">{t.steps.length} steps</span>
+            </motion.div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+/** What good looks like for the current step, from the best take. */
+function Reference({ task, stepIndex }: { task: Cluster; stepIndex: number }) {
+  const step = task.steps[stepIndex]
+  if (!step) return null
+  const clip = expertClipFor(task, stepIndex)
+  return (
+    <motion.div
+      key={step.id}
+      className="flex items-center gap-4 pb-5"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4, delay: 0.3 }}
+    >
+      <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={stepIndex + 1} className="h-[72px] w-[128px] shrink-0 rounded-[8px]" />
+      <div>
+        <p className="font-mono text-[15px] text-ink-3">Expert reference</p>
+        <p className="mt-1 text-[18px] text-ink-2">
+          {clip?.take_label ?? 'Best take'} · {fmt(step.expert_start_s)}
+        </p>
+      </div>
+    </motion.div>
   )
 }
 

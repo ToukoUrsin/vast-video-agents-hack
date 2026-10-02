@@ -23,7 +23,12 @@ export function getThumb(clip: Clip, size: 'sm' | 'lg' = 'sm', variant = 0): HTM
   const hit = cache.get(key)
   if (hit) return hit
   const dim = size === 'sm' ? THUMB_SM : THUMB_LG
-  const canvas = renderScene(sceneFor(clip), dim.w, dim.h, hashString(clip.clip_id) + variant * 7919)
+  const sloppy = clip.source === 'ours' && (clip.score ?? 100) < 70
+  // variant N > 0 on a task scene = the state right after step N
+  const canvas = renderScene(sceneFor(clip), dim.w, dim.h, hashString(clip.clip_id) + variant * 7919, {
+    step: variant > 0 ? variant : undefined,
+    sloppy: variant > 0 ? false : sloppy,
+  })
   cache.set(key, canvas)
   if (clip.thumbnail_url) {
     const img = new Image()
@@ -39,14 +44,19 @@ export function getThumb(clip: Clip, size: 'sm' | 'lg' = 'sm', variant = 0): HTM
 
 export function sceneFor(clip: Clip): SceneKind {
   if (clip.source === 'ours') {
-    if (clip.cluster_id === 'making-tea') return 'task-tea'
-    if (clip.cluster_id === 'safety-gear') return 'task-gear'
-    return 'task-box'
+    if (clip.cluster_id === 'cup-pyramid') return 'task-cups'
+    if (clip.cluster_id === 'pour-drink') return 'task-pour'
+    return 'task-lego'
   }
   return getSiteKind(clip.location)
 }
 
-export function renderScene(kind: SceneKind, w: number, h: number, seed: number): HTMLCanvasElement {
+export interface SceneOpts {
+  step?: number
+  sloppy?: boolean
+}
+
+export function renderScene(kind: SceneKind, w: number, h: number, seed: number, opts: SceneOpts = {}): HTMLCanvasElement {
   const canvas = document.createElement('canvas')
   canvas.width = w
   canvas.height = h
@@ -57,7 +67,7 @@ export function renderScene(kind: SceneKind, w: number, h: number, seed: number)
   const warm = kind.startsWith('task')
   const temp = warm ? 0.6 + rand() * 0.4 : rand() * 2 - 1 // -1 cool .. 1 warm
   base(ctx, temp, kind, rand)
-  SCENES[kind](ctx, rand)
+  SCENES[kind](ctx, rand, opts)
   ctx.restore()
   grade(ctx, w, h, temp, rand, warm)
   return canvas
@@ -122,7 +132,7 @@ function person(ctx: Ctx, x: number, y: number, s: number, a: number) {
   ctx.fillRect(x + 0.8 * s, y, 2.6 * s, 10 * s)
 }
 
-const SCENES: Record<SceneKind, (ctx: Ctx, r: R) => void> = {
+const SCENES: Record<SceneKind, (ctx: Ctx, r: R, o: SceneOpts) => void> = {
   warehouse(ctx, r) {
     const vx = 80 + r() * 32
     const vy = 40 + r() * 8
@@ -323,91 +333,129 @@ const SCENES: Record<SceneKind, (ctx: Ctx, r: R) => void> = {
     const n = 1 + Math.floor(r() * 2)
     for (let i = 0; i < n; i++) person(ctx, 30 + r() * 130, 74 + r() * 8, 1.4, 0.15)
   },
-  'task-box'(ctx, r) {
-    poly(ctx, [0, 60, 192, 54, 192, 108, 0, 108], W(0.05))
-    line(ctx, 0, 60, 192, 54, W(0.12), 1)
-    glow(ctx, 150, 10, 60, 0.08)
-    const bx = 64 + r() * 20
-    const by = 52 + r() * 6
-    // box
-    poly(ctx, [bx, by, bx + 52, by - 4, bx + 54, by + 30, bx + 2, by + 34], 'rgba(190,160,120,0.28)')
-    poly(ctx, [bx, by, bx + 52, by - 4, bx + 40, by - 18, bx - 10, by - 12], 'rgba(210,180,140,0.2)')
-    line(ctx, bx + 26, by - 2, bx + 27, by + 32, 'rgba(240,230,210,0.22)', 2)
-    // tape roll
-    ctx.strokeStyle = W(0.2)
-    ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.arc(bx + 80, by + 18, 7, 0, 7)
-    ctx.stroke()
-    // hands / forearms
-    ctx.fillStyle = 'rgba(220,190,170,0.22)'
-    ctx.beginPath()
-    ctx.ellipse(bx - 8, by + 6, 12, 5, -0.4, 0, 7)
-    ctx.ellipse(bx + 62, by - 2, 12, 5, 0.5, 0, 7)
-    ctx.fill()
-    ctx.fillStyle = W(0.08)
-    ctx.beginPath()
-    ctx.roundRect(bx - 4, 0, 62, 30, 12)
-    ctx.fill()
-  },
-  'task-tea'(ctx, r) {
-    poly(ctx, [0, 66, 192, 62, 192, 108, 0, 108], W(0.05))
-    line(ctx, 0, 66, 192, 62, W(0.12), 1)
-    ctx.fillStyle = W(0.05)
-    ctx.fillRect(120, 4, 54, 40)
-    glow(ctx, 147, 24, 40, 0.12)
-    const kx = 46 + r() * 16
-    ctx.fillStyle = W(0.16)
-    ctx.beginPath()
-    ctx.moveTo(kx, 64)
-    ctx.lineTo(kx + 4, 36)
-    ctx.quadraticCurveTo(kx + 16, 30, kx + 28, 36)
-    ctx.lineTo(kx + 32, 64)
-    ctx.fill()
-    ctx.fillRect(kx + 30, 44, 8, 3)
-    ctx.fillStyle = W(0.2)
-    ctx.beginPath()
-    ctx.roundRect(kx + 56, 50, 16, 16, 3)
-    ctx.fill()
-    ctx.strokeStyle = W(0.2)
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.arc(kx + 74, 58, 4, -1.4, 1.4)
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(220,190,170,0.2)'
-    ctx.beginPath()
-    ctx.ellipse(kx + 20, 30, 12, 5, 0.3, 0, 7)
-    ctx.fill()
-  },
-  'task-gear'(ctx, r) {
-    for (let i = 0; i < 6; i++) {
-      ctx.fillStyle = W(0.035 + (i % 2) * 0.015)
-      ctx.fillRect(i * 32, 0, 30, 76)
-      ctx.fillStyle = W(0.08)
-      ctx.fillRect(i * 32 + 24, 30, 2, 8)
+  'task-lego'(ctx, r, o) {
+    bench(ctx, r)
+    const step = o.step ?? 4
+    const bx = 70 + r() * 10 + (step >= 5 ? 44 : 0)
+    const by = 80
+    // base plate
+    poly(ctx, [bx - 30, by, bx + 30, by, bx + 38, by + 9, bx - 22, by + 9], 'rgba(120,165,110,0.55)')
+    for (let k = 0; k < 6; k++) {
+      ctx.fillStyle = 'rgba(160,200,150,0.35)'
+      ctx.fillRect(bx - 22 + k * 9, by + 2, 4, 2)
     }
-    ctx.fillStyle = K(0.3)
-    ctx.fillRect(0, 76, 192, 32)
-    const px = 80 + r() * 30
-    ctx.fillStyle = W(0.12)
-    ctx.beginPath()
-    ctx.arc(px, 22, 9, 0, 7)
-    ctx.fill()
-    ctx.beginPath()
-    ctx.roundRect(px - 18, 33, 36, 50, 8)
-    ctx.fill()
-    // vest
-    poly(ctx, [px - 16, 36, px - 3, 36, px - 4, 80, px - 16, 80], 'rgba(230,200,120,0.3)')
-    poly(ctx, [px + 3, 36, px + 16, 36, px + 16, 80, px + 4, 80], 'rgba(230,200,120,0.3)')
-    line(ctx, px - 16, 62, px - 4, 62, W(0.35), 2)
-    line(ctx, px + 4, 62, px + 16, 62, W(0.35), 2)
-    if (r() < 0.6) {
-      ctx.fillStyle = W(0.22)
+    const colors: string[] = []
+    if (o.sloppy) colors.push('rgba(205,92,80,0.85)', 'rgba(226,192,90,0.85)')
+    else {
+      if (step >= 2) colors.push('rgba(205,92,80,0.85)')
+      if (step >= 3) colors.push('rgba(92,128,200,0.85)')
+      if (step >= 4) colors.push('rgba(226,192,90,0.85)')
+    }
+    colors.forEach((c, k) => {
+      const y = by - 12 - k * 12
+      ctx.fillStyle = c
       ctx.beginPath()
-      ctx.ellipse(px, 15, 11, 6, 0, Math.PI, 0)
+      ctx.roundRect(bx - 14, y, 28, 12, 1.5)
       ctx.fill()
-    }
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'
+      ctx.fillRect(bx - 14, y, 28, 2)
+      ctx.fillStyle = c
+      ctx.fillRect(bx - 10, y - 3, 6, 3)
+      ctx.fillRect(bx + 4, y - 3, 6, 3)
+    })
+    // loose bricks waiting on the table
+    const left = o.sloppy ? ['rgba(92,128,200,0.8)'] : [step < 2 && 'rgba(205,92,80,0.8)', step < 3 && 'rgba(92,128,200,0.8)', step < 4 && 'rgba(226,192,90,0.8)'].filter(Boolean)
+    ;(left as string[]).forEach((c, k) => {
+      ctx.fillStyle = c
+      ctx.beginPath()
+      ctx.roundRect(150 + k * 4 - (step >= 5 ? 120 : 0), 92 - k * 9, 22, 9, 1.5)
+      ctx.fill()
+    })
+    hands(ctx, bx, by - 14 - colors.length * 12)
   },
+  'task-cups'(ctx, r, o) {
+    bench(ctx, r)
+    const step = o.step ?? 3
+    const cx = 92 + r() * 10
+    const base = 92
+    const cup = (x: number, y: number) => {
+      poly(ctx, [x - 11, y, x + 11, y, x + 8, y - 18, x - 8, y - 18], 'rgba(236,230,218,0.62)')
+      line(ctx, x - 11, y, x + 11, y, 'rgba(255,255,255,0.5)', 1.2)
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'
+      ctx.fillRect(x + 2, y - 17, 5, 16)
+    }
+    if (step >= 4 && !o.sloppy) {
+      for (let k = 0; k < 6; k++) cup(cx, base - k * 3.2)
+    } else {
+      const bottom = o.sloppy ? 2 : 3
+      for (let k = 0; k < bottom; k++) cup(cx + (k - (bottom - 1) / 2) * 24, base)
+      if (o.sloppy || step >= 2) {
+        const mid = o.sloppy ? 1 : 2
+        for (let k = 0; k < mid; k++) cup(cx + (k - (mid - 1) / 2) * 24, base - 19)
+      }
+      if (!o.sloppy && step >= 3) cup(cx, base - 38)
+      const spare = o.sloppy ? 3 : Math.max(0, 6 - (step >= 3 ? 6 : step >= 2 ? 5 : 3))
+      for (let k = 0; k < spare; k++) cup(162, base - k * 3.2)
+    }
+    hands(ctx, cx, base - 52)
+  },
+  'task-pour'(ctx, r, o) {
+    bench(ctx, r)
+    const step = o.step ?? 3
+    const forward = o.sloppy || step >= 5
+    const cx = 108 + r() * 6
+    const cy = forward ? 98 : 88
+    const s = forward ? 1.18 : 1
+    const fill = o.sloppy || step >= 3 ? 0.5 : 0
+    // cup
+    poly(ctx, [cx - 10 * s, cy - 24 * s, cx + 10 * s, cy - 24 * s, cx + 8 * s, cy, cx - 8 * s, cy], 'rgba(230,236,240,0.28)')
+    if (fill) poly(ctx, [cx - 9 * s, cy - 24 * s * fill, cx + 9 * s, cy - 24 * s * fill, cx + 8 * s, cy, cx - 8 * s, cy], 'rgba(214,150,70,0.6)')
+    line(ctx, cx - 10 * s, cy - 24 * s, cx + 10 * s, cy - 24 * s, 'rgba(255,255,255,0.45)', 1)
+    // bottle
+    const pouring = step === 3 && !o.sloppy
+    const capOn = step < 2 || (step >= 4 && !o.sloppy)
+    ctx.save()
+    if (pouring) {
+      ctx.translate(cx - 18, cy - 46)
+      ctx.rotate(-2.1)
+    } else ctx.translate(62, 90)
+    ctx.fillStyle = 'rgba(120,160,130,0.55)'
+    ctx.beginPath()
+    ctx.roundRect(-9, -44, 18, 44, 4)
+    ctx.fill()
+    ctx.fillRect(-4, -54, 8, 11)
+    ctx.fillStyle = 'rgba(255,255,255,0.16)'
+    ctx.fillRect(-6, -40, 3, 34)
+    if (capOn) {
+      ctx.fillStyle = 'rgba(205,92,80,0.85)'
+      ctx.fillRect(-5, -59, 10, 6)
+    }
+    ctx.restore()
+    if (pouring) line(ctx, cx - 4, cy - 40, cx - 1, cy - 14, 'rgba(214,150,70,0.7)', 2)
+    if (!capOn) {
+      ctx.fillStyle = 'rgba(205,92,80,0.85)'
+      ctx.fillRect(40, 94, 9, 5)
+    }
+    hands(ctx, pouring ? cx - 30 : cx, pouring ? cy - 56 : cy - 34)
+  },
+}
+
+function bench(ctx: Ctx, r: R) {
+  poly(ctx, [0, 58, 192, 54, 192, 108, 0, 108], W(0.07))
+  line(ctx, 0, 58, 192, 54, W(0.14), 1)
+  glow(ctx, 140 + r() * 20, 8, 70, 0.1)
+  ctx.fillStyle = W(0.05)
+  ctx.beginPath()
+  ctx.roundRect(60, 0, 70, 26, 12)
+  ctx.fill()
+}
+
+function hands(ctx: Ctx, x: number, y: number) {
+  ctx.fillStyle = 'rgba(222,192,170,0.22)'
+  ctx.beginPath()
+  ctx.ellipse(x - 26, y + 6, 12, 5, -0.5, 0, 7)
+  ctx.ellipse(x + 26, y + 4, 12, 5, 0.5, 0, 7)
+  ctx.fill()
 }
 
 function grade(ctx: Ctx, w: number, h: number, temp: number, rand: R, warm: boolean) {

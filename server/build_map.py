@@ -149,7 +149,7 @@ def learn_steps(task_label: str, segments: list[dict], use_llm: bool) -> list[di
         prompt = (
             f'Task: "{task_label}". Below is a timeline of what Cosmos saw an expert do, per segment.\n{timeline}\n\n'
             "Extract the 4-6 key steps of the task in order. Each step: an imperative of 2-6 words a coach would say "
-            '(e.g. "Tape the bottom seam"), with start_s and end_s from the timeline where it happens, and '
+            '(e.g. "Put a red brick on it"), with start_s and end_s from the timeline where it happens, and '
             '"common_mistake": one short spoken correction for doing it wrong or skipping it. '
             'Return ONLY JSON: {"steps": [{"text": str, "start_s": number, "end_s": number, "common_mistake": str}]}'
         )

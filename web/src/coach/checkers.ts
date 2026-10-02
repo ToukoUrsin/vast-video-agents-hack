@@ -40,9 +40,10 @@ export class MockStepChecker implements StepChecker {
     await new Promise((r) => setTimeout(r, 300 + Math.random() * 400))
     const cmd = this.queue.shift()
     const latencyMs = 1700 + Math.random() * 700
-    if (cmd === 'done') return { done: true, latencyMs }
-    if (cmd === 'mistake') return { done: false, issue: step.common_mistake ?? `That doesn't look like "${step.text}" yet.`, latencyMs }
-    return { done: false, latencyMs }
+    if (cmd === 'done') return { state: 'done', done: true, latencyMs }
+    if (cmd === 'mistake')
+      return { state: 'mistake', done: false, issue: step.common_mistake ?? `That doesn't look like "${step.text}" yet.`, latencyMs }
+    return { state: 'working', done: false, latencyMs }
   }
 }
 
@@ -63,23 +64,64 @@ export class MockTaskRecognizer implements TaskRecognizer {
   }
 }
 
-/**
- * Real checker seam: POSTs frames to our server proxy which asks Cosmos Reason
- * "Has the person completed '<step>'? If not, what is wrong?".
- * Expected response JSON: { done: boolean, issue?: string }.
- */
+/** Live checker: our server asks Cosmos Reason about the current step. */
 export class HttpStepChecker implements StepChecker {
   private url: string
   constructor(url = '/api/check-step') {
     this.url = url
   }
   async check(frames: Frame[], step: Step, task: Cluster): Promise<CheckResult> {
-    const body = new FormData()
-    body.set('task', task.label)
-    body.set('step', step.text)
-    frames.forEach((f, i) => body.append('frames', f.blob, `frame-${i}.jpg`))
-    const res = await fetch(this.url, { method: 'POST', body })
-    if (!res.ok) return { done: false }
-    return (await res.json()) as CheckResult
+    if (!frames.length) return { done: false, state: 'working', error: 'no camera frames' }
+    const i = task.steps.findIndex((s) => s.id === step.id)
+    try {
+      const res = await fetch(this.url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          frames: frames.map((f) => f.url),
+          task: task.label,
+          step: step.text,
+          prev_step: task.steps[i - 1]?.text ?? null,
+          next_step: task.steps[i + 1]?.text ?? null,
+        }),
+      })
+      if (!res.ok) return { done: false, state: 'working', error: `server ${res.status}` }
+      const j = (await res.json()) as { state?: string; done?: boolean; issue?: string; error?: string }
+      const state = (['done', 'working', 'mistake'].includes(j.state ?? '') ? j.state : j.done ? 'done' : 'working') as CheckResult['state']
+      return { state, done: state === 'done', issue: j.issue || undefined, error: j.error }
+    } catch (e) {
+      return { done: false, state: 'working', error: (e as Error).message || 'unreachable' }
+    }
+  }
+}
+
+/** Live recognizer: /api/identify embeds the first seconds and picks the nearest learned task. */
+export class HttpTaskRecognizer implements TaskRecognizer {
+  private resolve: (idOrLabel: string) => Cluster | undefined
+  lastError: string | null = null
+  constructor(resolve: (idOrLabel: string) => Cluster | undefined) {
+    this.resolve = resolve
+  }
+  async recognize(frames: Frame[]): Promise<Recognition | null> {
+    if (!frames.length) {
+      this.lastError = 'no camera frames'
+      return null
+    }
+    try {
+      const res = await fetch('/api/identify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ frames: frames.map((f) => f.url) }),
+      })
+      if (!res.ok) throw new Error(`server ${res.status}`)
+      const j = (await res.json()) as { task_id?: string; task?: string; confidence?: number }
+      const task = this.resolve(j.task_id ?? '') ?? this.resolve(j.task ?? '')
+      if (!task) throw new Error(`unknown task ${j.task_id ?? j.task}`)
+      this.lastError = null
+      return { task, confidence: j.confidence ?? 0 }
+    } catch (e) {
+      this.lastError = (e as Error).message || 'unreachable'
+      return null
+    }
   }
 }

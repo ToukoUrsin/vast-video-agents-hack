@@ -10,20 +10,66 @@ import { ExpertClip } from '../ui/ExpertClip'
 const params = new URLSearchParams(location.search)
 
 export function Score() {
-  const { session } = useApp()
+  const { session, setSession } = useApp()
   const [replay, setReplay] = useState(0)
-  const result: SessionResult = session ?? demoResult(getCluster(params.get('task') ?? 'packing-box') ?? tasks()[0])
+  const pending = !!session && !session.scoredBy
+  const result: SessionResult = session ?? demoResult(getCluster(params.get('task') ?? 'lego-tower') ?? tasks()[0])
   useKeys({ ' ': () => setReplay((r) => r + 1) })
-  return <ScoreCard key={replay} result={result} isDemo={!session} />
+
+  // live session: score + two feedback lines from the W&B-hosted LLM, local rule as fallback
+  useEffect(() => {
+    if (!session || session.scoredBy) return
+    let cancelled = false
+    scoreWithLlm(session).then((r) => !cancelled && setSession(r))
+    return () => {
+      cancelled = true
+    }
+  }, [session, setSession])
+
+  return <ScoreCard key={replay} result={result} isDemo={!session} pending={pending} />
 }
 
-function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean }) {
+async function scoreWithLlm(s: SessionResult): Promise<SessionResult> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 9000)
+  try {
+    const res = await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        task: s.task.label,
+        steps: s.steps.map((r, i) => ({
+          text: r.step.text,
+          done: r.outcome !== 'missed',
+          issue: s.mistakes.find((m) => m.stepIndex === i)?.issue ?? '',
+          t: r.at != null ? Math.round(r.at) : null,
+        })),
+      }),
+    })
+    if (!res.ok) throw new Error(String(res.status))
+    const j = (await res.json()) as { score?: number; feedback?: string[]; model?: string }
+    if (typeof j.score !== 'number' || !j.feedback || j.feedback.length < 2) throw new Error('bad response')
+    return { ...s, score: Math.round(j.score), feedback: [j.feedback[0], j.feedback[1]], scoredBy: 'llm', scoredModel: j.model }
+  } catch {
+    return { ...s, scoredBy: 'local' }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const modelName = (m?: string) => (m ? m.split('/').pop()!.replace(/-Instruct$/, '').replace(/-/g, ' ') : 'LLM')
+
+function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo: boolean; pending: boolean }) {
   const [shown, setShown] = useState(0)
   useEffect(() => {
+    if (pending) return
     const c = animate(0, result.score, { duration: 1.6, ease: [0.16, 1, 0.3, 1], delay: 0.25, onUpdate: (v) => setShown(Math.round(v)) })
     return () => c.stop()
-  }, [result.score])
+  }, [result.score, pending])
 
+  const [mountedAt] = useState(() => performance.now())
+  const mountedFor = () => (performance.now() - mountedAt) / 1000
   const m = result.mistakes[0]
   const expert = m ? expertClipFor(result.task, m.stepIndex) : undefined
   const sloppy = library_sloppy(result.task.id)
@@ -38,9 +84,18 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
           Score · {result.task.label}
           {isDemo && <span className="text-ink-3"> · sample session</span>}
         </p>
+        {pending && (
+          <div className="absolute left-0 top-[96px] flex items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5">
+              <span className="absolute inset-0 animate-ping rounded-full bg-wip opacity-40" style={{ animationDuration: '1.6s' }} />
+              <span className="relative h-2.5 w-2.5 rounded-full bg-wip" />
+            </span>
+            <span className="font-mono text-[20px] text-ink-2">Scoring with Llama 3.3 70B</span>
+          </div>
+        )}
         <div className="mt-2 flex items-baseline gap-4">
-          <span className="tnum text-[220px] font-medium leading-[0.92] tracking-[-0.06em] text-ink">{shown}</span>
-          <span className="font-mono text-[30px] text-ink-3">/100</span>
+          <span className={`tnum text-[220px] font-medium leading-[0.92] tracking-[-0.06em] text-ink transition-opacity duration-300 ${pending ? 'opacity-0' : ''}`}>{shown}</span>
+          <span className={`font-mono text-[30px] text-ink-3 ${pending ? 'opacity-0' : ''}`}>/100</span>
         </div>
         <motion.div
           className="mt-8 flex gap-10"
@@ -56,10 +111,13 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
         <motion.div
           className="mt-16 border-t border-line pt-7"
           initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: base + result.steps.length * 0.16 + 0.9, type: 'spring', stiffness: 200, damping: 30 }}
+          animate={{ opacity: pending ? 0 : 1, y: pending ? 10 : 0 }}
+          transition={{ delay: pending ? 0 : Math.max(0.6, base + result.steps.length * 0.16 + 0.9 - mountedFor()), type: 'spring', stiffness: 200, damping: 30 }}
         >
-          <p className="font-mono text-[17px] text-ink-2">Feedback</p>
+          <p className="font-mono text-[17px] text-ink-2">
+            Feedback
+            {result.scoredBy === 'llm' && <span className="text-ink-3"> · {modelName(result.scoredModel)} via W&amp;B</span>}
+          </p>
           <p className="mt-3 text-[26px] leading-[1.4] tracking-[-0.01em] text-ink">{result.feedback[0]}</p>
           <p className="mt-2 text-[26px] leading-[1.4] tracking-[-0.01em] text-ink-2">{result.feedback[1]}</p>
         </motion.div>
@@ -111,7 +169,7 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
                 )}
               </Frame>
               <Frame label={`Expert · ${expert?.take_label ?? 'best take'} · ${fmt(result.task.steps[m.stepIndex].expert_start_s)}`} tone="go">
-                <ExpertClip clip={expert} start={result.task.steps[m.stepIndex].expert_start_s} end={result.task.steps[m.stepIndex].expert_end_s} variant={m.stepIndex} className="absolute inset-0" />
+                <ExpertClip clip={expert} start={result.task.steps[m.stepIndex].expert_start_s} end={result.task.steps[m.stepIndex].expert_end_s} variant={m.stepIndex + 1} className="absolute inset-0" />
               </Frame>
             </div>
           </motion.div>
@@ -122,7 +180,7 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
 }
 
 function library_sloppy(taskId: string) {
-  const ids: Record<string, string> = { 'packing-box': 'ours-box-3', 'making-tea': 'ours-tea-3', 'safety-gear': 'ours-gear-3' }
+  const ids: Record<string, string> = { 'lego-tower': 'ours-lego-3', 'cup-pyramid': 'ours-cups-3', 'pour-drink': 'ours-pour-3' }
   return getClip(ids[taskId] ?? '')
 }
 

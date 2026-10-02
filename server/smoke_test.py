@@ -28,21 +28,21 @@ def call(name, method, path, **kw):
 
 
 call("health", "GET", "/api/health")
-call("check-step (json)", "POST", "/api/check-step", json={"frames": frames[:1] * 4, "step": "Tape the bottom seam", "task": "Packing a box"})
-call("check-step (json, 4 frames)", "POST", "/api/check-step", json={"frames": frames[:4], "step": "Tape the bottom seam", "task": "Packing a box"})
+call("check-step (json)", "POST", "/api/check-step", json={"frames": frames[:1] * 4, "step": "Put a blue brick on the red one", "task": "Lego assembly"})
+call("check-step (json, 4 frames)", "POST", "/api/check-step", json={"frames": frames[:4], "step": "Put a blue brick on the red one", "task": "Lego assembly"})
 files = [("frames", (f"f{i}.jpg", open(p, "rb").read(), "image/jpeg")) for i, p in enumerate(paths[:4])]
 call("check-step (multipart)", "POST", "/api/check-step", data={"step": "Sit down at a table", "task": "Attending a workshop"}, files=files)
 call("identify (default tasks)", "POST", "/api/identify", json={"frames": frames[:1] * 4})
-call("identify (custom tasks)", "POST", "/api/identify", json={"frames": frames[1:2] * 4, "tasks": ["Driving on a highway", "Packing a box", "Making tea"]})
+call("identify (custom tasks)", "POST", "/api/identify", json={"frames": frames[1:2] * 4, "tasks": ["Driving on a highway", "Lego assembly", "Cup pyramid"]})
 call("identify (reason)", "POST", "/api/identify", json={"frames": frames[:1], "method": "reason"})
-call("expert-clip", "POST", "/api/expert-clip", json={"task": "packing-box", "step_index": 1})
+call("expert-clip", "POST", "/api/expert-clip", json={"task": "lego-tower", "step_index": 1})
 call("feedback", "POST", "/api/feedback", json={
-    "task": "Packing a box",
+    "task": "Lego assembly",
     "steps": [
-        {"text": "Fold bottom flaps", "done": True, "issue": "", "t": 4},
-        {"text": "Tape the bottom seam", "done": True, "issue": "Tape the bottom seam before the item goes in.", "t": 15},
-        {"text": "Insert item", "done": True, "issue": "", "t": 19},
-        {"text": "Close top flaps", "done": True, "issue": "", "t": 24},
-        {"text": "Tape and label", "done": True, "issue": "", "t": 31},
+        {"text": "Place the base plate flat on the table", "done": True, "issue": "", "t": 4},
+        {"text": "Put a red brick on it", "done": True, "issue": "", "t": 9},
+        {"text": "Put a blue brick on the red one", "done": True, "issue": "Put the blue brick on before the yellow one.", "t": 18},
+        {"text": "Put a yellow brick on top", "done": True, "issue": "", "t": 22},
+        {"text": "Push the finished tower to the right side", "done": True, "issue": "", "t": 27},
     ],
 })

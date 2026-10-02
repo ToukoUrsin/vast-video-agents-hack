@@ -8,8 +8,15 @@ export interface Frame {
   at: number
 }
 
+export type CheckState = 'done' | 'working' | 'mistake'
+
 export interface CheckResult {
+  /** Preferred: what the checker saw for the current step */
+  state?: CheckState
+  /** Legacy boolean; state wins when present */
   done: boolean
+  /** Set when the checker could not be reached; the coach keeps watching */
+  error?: string
   /** Present when the person is doing something wrong; spoken + shown as a correction */
   issue?: string
   /** Model latency to show in the status line; measured if omitted */
@@ -49,6 +56,9 @@ export interface MistakeRecord {
 }
 
 export interface SessionResult {
+  /** 'llm' when /api/feedback produced score + feedback, else the local rule */
+  scoredBy?: 'llm' | 'local'
+  scoredModel?: string
   task: Cluster
   steps: StepRecord[]
   mistakes: MistakeRecord[]

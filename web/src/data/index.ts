@@ -23,7 +23,34 @@ async function load(): Promise<LibraryData> {
   return base
 }
 
-export const library: LibraryData = await load()
+/**
+ * Until our own takes are in VastDB, the placeholder takes have made-up coordinates. Park
+ * their task clusters in the emptiest region of the real layout (meta.free_spot) so they
+ * read as their own neighbourhood instead of colliding with archive clusters.
+ */
+function parkPlaceholderTakes(lib: LibraryData): LibraryData {
+  const spot = (REAL_ARCHIVE.meta as { free_spot?: [number, number] } | undefined)?.free_spot
+  const ours = lib.clips.filter((c) => c.source === 'ours' && !c.thumbnail_url)
+  if (!spot || !ours.length || usePlaceholder()) return lib
+  const taskIds = [...new Set(ours.map((c) => c.cluster_id))]
+  const sx = spot[0] > 0 ? 1 : -1
+  const sy = spot[1] > 0 ? -1 : 1
+  const offsets: Array<[number, number]> = [
+    [-0.7 * sx, 0],
+    [0, 0],
+    [-0.35 * sx, 0.7 * sy],
+  ]
+  const moved = new Map(
+    ours.map((c) => {
+      const k = taskIds.indexOf(c.cluster_id)
+      const [ox, oy] = offsets[k % offsets.length]
+      return [c.clip_id, { ...c, embedding2d: { x: spot[0] + ox, y: spot[1] + oy } }]
+    }),
+  )
+  return { ...lib, clips: lib.clips.map((c) => moved.get(c.clip_id) ?? c) }
+}
+
+export const library: LibraryData = parkPlaceholderTakes(await load())
 
 const clipIndex = new Map(library.clips.map((c) => [c.clip_id, c]))
 const clusterIndex = new Map(library.clusters.map((c) => [c.id, c]))

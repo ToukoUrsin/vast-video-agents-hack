@@ -37,9 +37,9 @@ SNAPSHOT = U.ROOT / "web" / "src" / "data" / "real-archive.json"
 
 # Tasks the demo performs. Used for zero-shot recognition until our recordings are in the index.
 DEFAULT_TASKS = [
-    {"id": "packing-box", "label": "Packing a box", "prompt": "a person folding, taping and packing a cardboard box on a table"},
-    {"id": "making-tea", "label": "Making tea", "prompt": "a person making tea with a kettle, a cup and a tea bag"},
-    {"id": "safety-gear", "label": "Putting on safety gear", "prompt": "a person putting on a hi-vis vest, safety glasses, gloves and a hard hat"},
+    {"id": "lego-tower", "label": "Lego assembly", "prompt": "a person stacking red, blue and yellow Lego bricks into a small tower on a green base plate on a table"},
+    {"id": "cup-pyramid", "label": "Cup pyramid", "prompt": "a person stacking plastic cups upside down into a pyramid on a table, then taking it down into one stack"},
+    {"id": "pour-drink", "label": "Pour a drink", "prompt": "a person pouring a drink from a bottle into a cup on a table and closing the bottle cap"},
 ]
 
 app = FastAPI(title="Understudy server")
@@ -168,7 +168,7 @@ def check_prompt(task: str, step: str, prev: str | None, nxt: str | None) -> str
         '- "mistake": the person visibly does something wrong for this step: skips it and moves on to a later '
         "step, does it out of order, or does it unsafely or sloppily. Only use this when the error is visible.\n"
         'If "mistake", give "issue": one short spoken correction under 15 words addressed to them, e.g. '
-        '"Tape the bottom seam before the item goes in." Otherwise "issue" is "".\n'
+        '"Put the blue brick on before the yellow one." Otherwise "issue" is "".\n'
         'Answer ONLY with JSON: {"state": "done"|"working"|"mistake", "issue": "..."}'
     )
 

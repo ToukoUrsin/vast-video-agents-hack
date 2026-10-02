@@ -7,6 +7,7 @@ Endpoints (all JSON; check-step / identify also accept multipart with `frames` f
   POST /api/expert-clip   {task, step_index}          -> {url|null, start_s, end_s}
   POST /api/feedback      {task, steps:[{text,done,issue,t}]} -> {score, feedback:[str,str]}
   GET  /api/library       the real-archive snapshot (same JSON the web app imports)
+  POST /api/search        {query}                     -> VSS semantic search hits + thumbnails
 """
 
 from __future__ import annotations
@@ -783,3 +784,181 @@ async def health():
     }
     results["ok"] = all(v["ok"] for k, v in results.items() if k in ("cosmos_reason", "cosmos_embed", "wandb"))
     return results
+
+
+# ------------------------------------------------------------------ archive search (VSS semantic search)
+# POST /api/search {query} -> VSS /api/v1/search (Cosmos Embed query vector + caption text over VastDB),
+# reached through the SOCKS tunnel like every other VSS call. Thumbnails come from the map snapshot
+# when the segment is on the map, else /api/search/thumb grabs a frame (local take mp4 or VSS stream).
+
+_vss_http: httpx.AsyncClient | None = None
+_vss_token: str | None = None
+_snap_cache: dict = {"mtime": None}
+THUMB_DIR = Path(tempfile.gettempdir()) / "understudy-search-thumbs"
+VSS_DOWN = f"VSS unreachable · SOCKS tunnel {U.SOCKS.split('://')[-1]} is down"
+VSS_FIX = "ssh -f -N -D 1080 vastvm"
+
+
+def _snapshot_clips() -> dict:
+    """vss_source -> clip, plus 'video stem' -> clip for other segments of the same archive video."""
+    m = SNAPSHOT.stat().st_mtime if SNAPSHOT.exists() else 0
+    if _snap_cache["mtime"] != m:
+        clips = json.loads(SNAPSHOT.read_text()).get("clips", []) if m else []
+        by_src = {c["vss_source"]: c for c in clips if c.get("vss_source")}
+        by_stem: dict[str, dict] = {}
+        for c in clips:
+            s = c.get("vss_source") or ""
+            if "_segment_" in s:
+                by_stem.setdefault(s.split("_segment_")[0], c)
+        _snap_cache.update(mtime=m, by_src=by_src, by_stem=by_stem)
+    return _snap_cache
+
+
+async def _vss_req(method: str, path: str, **kw) -> httpx.Response:
+    global _vss_http, _vss_token
+    if _vss_http is None:
+        _vss_http = httpx.AsyncClient(base_url=U.INGRESS_URL, proxy=U.SOCKS, timeout=25)
+
+    async def login():
+        global _vss_token
+        r = await _vss_http.post(
+            "/api/v1/auth/login", json={"username": os.environ["VSS_USERNAME"], "password": os.environ["VSS_PASSWORD"]}
+        )
+        r.raise_for_status()
+        _vss_token = r.json()["access_token"]
+
+    if not _vss_token:
+        await login()
+    r = await _vss_http.request(method, path, headers={"Authorization": f"Bearer {_vss_token}"}, **kw)
+    if r.status_code == 401:
+        await login()
+        r = await _vss_http.request(method, path, headers={"Authorization": f"Bearer {_vss_token}"}, **kw)
+    return r
+
+
+def _excerpt(text: str, limit: int = 170) -> str:
+    import re
+
+    t = re.sub(r"\*\*|__|`|#+\s*", "", text or "")
+    t = re.sub(r"\s*\d+\.\s+", " ", t)  # numbered step lists
+    t = " ".join(t.split())
+    if len(t) <= limit:
+        return t
+    cut = t[:limit]
+    end = max(cut.rfind(". "), cut.rfind("; "))
+    return cut[: end + 1] if end > 60 else cut.rsplit(" ", 1)[0] + "…"
+
+
+def _tag(tags: list, key: str) -> str | None:
+    for t in tags or []:
+        if isinstance(t, str) and t.startswith(key + ":"):
+            return t.split(":", 1)[1]
+    return None
+
+
+@app.post("/api/search")
+async def search(req: Request):
+    from urllib.parse import quote
+
+    t0 = time.perf_counter()
+    data = await req.json()
+    q = str(data.get("query") or "").strip()
+    if not q:
+        return JSONResponse({"error": "empty query"}, 400)
+    top_k = max(1, min(int(data.get("top_k") or 8), 24))
+    try:
+        r = await _vss_req(
+            "POST", "/api/v1/search", json={"query": q, "top_k": top_k, "llm_top_n": 1, "min_similarity": 0.15}
+        )
+        r.raise_for_status()
+        j = r.json()
+    except (httpx.TransportError, OSError) as e:
+        return JSONResponse({"error": VSS_DOWN, "fix": VSS_FIX, "detail": f"{type(e).__name__}: {e}"[:200]}, 503)
+    except httpx.HTTPStatusError as e:
+        return JSONResponse({"error": f"VSS search failed ({e.response.status_code})"}, 502)
+    snap = _snapshot_clips()
+    out = []
+    for x in (j.get("results") or [])[:top_k]:
+        src, orig = x.get("source") or "", x.get("original_video") or ""
+        start, end = x.get("segment_start_sec"), x.get("segment_end_sec")
+        exact = snap["by_src"].get(src)
+        ours = snap["by_src"].get(orig)  # our takes are indexed per upload; segments point at the take
+        near = exact or ours or (snap["by_stem"].get(src.split("_segment_")[0]) if "_segment_" in src else None)
+        if exact:
+            thumb = exact["thumbnail_url"]
+        elif ours:
+            thumb = f"/api/search/thumb?source={quote(orig, safe='')}&t={round((start or 0) + 2.5, 1)}"
+        else:
+            thumb = f"/api/search/thumb?source={quote(src, safe='')}"
+        tags = x.get("tags") or []
+        out.append(
+            {
+                "source": src,
+                "original_video": orig,
+                "caption": _excerpt(x.get("reasoning_content") or ""),
+                "location": x.get("location"),
+                "camera_id": x.get("camera_id"),
+                "similarity": round(float(x.get("similarity_score") or 0), 4),
+                "start_s": start,
+                "end_s": end,
+                "task": _tag(tags, "task"),
+                "take": _tag(tags, "take"),
+                "clip_id": near["clip_id"] if near else None,
+                "on_map": "exact" if (exact or ours) else "same video" if near else None,
+                "thumb": thumb,
+            }
+        )
+    syn = j.get("llm_synthesis") or {}
+    answer = _excerpt((syn.get("response") or "").replace("Answer", "", 1), 220) if syn.get("response") else None
+    return {
+        "query": q,
+        "results": out,
+        "total": j.get("total"),
+        "answer": answer,
+        "answer_model": syn.get("model"),
+        "embedding_ms": round(j.get("embedding_time_ms") or 0),
+        "search_ms": round(j.get("search_time_ms") or 0),
+        "latency_ms": int((time.perf_counter() - t0) * 1000),
+    }
+
+
+def _local_take(source: str) -> Path | None:
+    c = _snapshot_clips()["by_src"].get(source)
+    if c and c.get("video_url"):
+        p = U.ROOT / "web" / "public" / c["video_url"].lstrip("/")
+        return p if p.exists() else None
+    return None
+
+
+@app.get("/api/search/thumb")
+async def search_thumb(source: str, t: float | None = None):
+    import hashlib
+
+    from fastapi.responses import FileResponse
+
+    THUMB_DIR.mkdir(parents=True, exist_ok=True)
+    out = THUMB_DIR / (hashlib.sha1(f"{source}|{t}".encode()).hexdigest()[:16] + ".jpg")
+    if not out.exists():
+        local = _local_take(source)
+        tmp = None
+        try:
+            if local:
+                inp, ss = str(local), t if t is not None else 2.5
+            else:
+                r = await _vss_req("GET", "/api/v1/videos/stream", params={"source": source, "token": _vss_token})
+                r.raise_for_status()
+                tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False)
+                tmp.write(r.content)
+                tmp.close()
+                inp, ss = tmp.name, t if t is not None else 2.0
+            cmd = ["ffmpeg", "-v", "error", "-y", "-ss", str(ss), "-i", inp, "-frames:v", "1",
+                   "-vf", "scale=480:-2", "-q:v", "4", str(out)]  # fmt: skip
+            await asyncio.to_thread(subprocess.run, cmd, check=True, timeout=20)
+        except (httpx.TransportError, OSError) as e:
+            return JSONResponse({"error": VSS_DOWN, "detail": str(e)[:200]}, 503)
+        except Exception as e:
+            return JSONResponse({"error": f"{type(e).__name__}: {e}"[:200]}, 502)
+        finally:
+            if tmp:
+                Path(tmp.name).unlink(missing_ok=True)
+    return FileResponse(out, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})

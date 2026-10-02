@@ -6,7 +6,7 @@ loud with the expert clip for that step, and scores the attempt.
 
 Built at the Real-Time Video Agents Hack SF (VAST Builders Challenge), 2 Oct 2026, team 39.
 
-- **Demo video:** https://www.loom.com/share/af2170bbaa094561b5fd8c4181b862f4
+- **Demo video:** https://drive.google.com/file/d/1FTKoPFUKaKgEr-alHf8hGr9LpdgJuH9I/view (also on Loom: https://www.loom.com/share/af2170bbaa094561b5fd8c4181b862f4)
 - **Live app:** https://hints-modules-jvc-suspension.trycloudflare.com (allow the camera on the Coach screen)
 
 ## How it works

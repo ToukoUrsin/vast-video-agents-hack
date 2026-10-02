@@ -808,7 +808,7 @@ _vss_http: httpx.AsyncClient | None = None
 _vss_token: str | None = None
 _snap_cache: dict = {"mtime": None}
 THUMB_DIR = Path(tempfile.gettempdir()) / "understudy-search-thumbs"
-VSS_DOWN = f"VSS unreachable · SOCKS tunnel {U.SOCKS.split('://')[-1]} is down"
+VSS_DOWN = (f"VSS unreachable · SOCKS tunnel {U.SOCKS.split('://')[-1]} is down" if U.SOCKS else "VSS unreachable")
 VSS_FIX = "ssh -f -N -D 1080 vastvm"
 
 
@@ -975,3 +975,60 @@ async def search_thumb(source: str, t: float | None = None):
             if tmp:
                 Path(tmp.name).unlink(missing_ok=True)
     return FileResponse(out, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
+
+
+# ------------------------------------------------------------------ public deploy
+# Set UNDERSTUDY_PUBLIC=1 to serve the built web app (web/dist) from this server and rate-limit
+# the paid upstream routes per client IP (Cloudflare sends the real IP in CF-Connecting-IP).
+
+if os.environ.get("UNDERSTUDY_PUBLIC") == "1":
+    from collections import defaultdict, deque
+
+    from fastapi.responses import FileResponse
+    from fastapi.staticfiles import StaticFiles
+
+    # route -> (max calls per window per IP, window seconds). A live coach run does one check-step
+    # at a time (~1-2 s each), so 90/min is well above one real user.
+    LIMITS = {
+        "/api/check-step": (90, 60),
+        "/api/identify": (20, 60),
+        "/api/feedback": (10, 60),
+        "/api/search": (20, 60),
+        "/api/search/thumb": (120, 60),
+        "/api/expert-clip": (30, 60),
+        "/api/health": (10, 60),
+    }
+    GLOBAL_PAID_PER_HOUR = int(os.environ.get("UNDERSTUDY_GLOBAL_PER_HOUR", "6000"))
+    _hits: dict[tuple[str, str], deque] = defaultdict(deque)
+    _global: deque = deque()
+
+    def _client_ip(req: Request) -> str:
+        return req.headers.get("cf-connecting-ip") or (req.headers.get("x-forwarded-for") or "").split(",")[0].strip() or (req.client.host if req.client else "?")
+
+    @app.middleware("http")
+    async def _rate_limit(req: Request, call_next):
+        lim = LIMITS.get(req.url.path)
+        if lim:
+            now = time.monotonic()
+            n, win = lim
+            q = _hits[(_client_ip(req), req.url.path)]
+            while q and now - q[0] > win:
+                q.popleft()
+            while _global and now - _global[0] > 3600:
+                _global.popleft()
+            if len(q) >= n or len(_global) >= GLOBAL_PAID_PER_HOUR:
+                return JSONResponse({"error": "rate limited, slow down"}, 429, headers={"Retry-After": str(win)})
+            q.append(now)
+            _global.append(now)
+        return await call_next(req)
+
+    DIST = U.ROOT / "web" / "dist"
+    if DIST.exists():
+        app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
+
+        @app.get("/{path:path}", include_in_schema=False)
+        async def _spa(path: str):
+            f = (DIST / path).resolve()
+            if path and f.is_file() and DIST.resolve() in f.parents:
+                return FileResponse(f)
+            return FileResponse(DIST / "index.html", headers={"Cache-Control": "no-cache"})

@@ -13,7 +13,7 @@ export function Score() {
   const { session, setSession } = useApp()
   const [replay, setReplay] = useState(0)
   const pending = !!session && !session.scoredBy
-  const result: SessionResult = session ?? demoResult(getCluster(params.get('task') ?? 'lego-tower') ?? tasks()[0])
+  const result: SessionResult = session ?? demoResult(getCluster(params.get('task') ?? 'cap-swap') ?? tasks()[0])
   useKeys({ ' ': () => setReplay((r) => r + 1) })
 
   // live session: score + two feedback lines from the W&B-hosted LLM, local rule as fallback
@@ -180,7 +180,7 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
 }
 
 function library_sloppy(taskId: string) {
-  const ids: Record<string, string> = { 'lego-tower': 'ours-lego-3', 'cup-pyramid': 'ours-cups-3', 'pour-drink': 'ours-pour-3' }
+  const ids: Record<string, string> = { 'cap-swap': 'ours-caps-3', 'cup-pyramid': 'ours-cups-3', 'vast-astronaut': 'ours-astro-3' }
   return getClip(ids[taskId] ?? '')
 }
 

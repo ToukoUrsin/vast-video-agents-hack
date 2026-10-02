@@ -120,7 +120,7 @@ export function Library() {
               <Row key={s.id} clip={library.clips.find((c) => c.location === s.id)} label={s.name} value={counts.get(s.id) ?? 0} />
             ))}
         </SourceCard>
-        <SourceCard title="Our recordings" count={ours.length} unit="takes" sub={`${tasks().length} tasks · bench camera`}>
+        <SourceCard title="Our recordings" count={ours.length} unit="takes" sub={`${tasks().length} tasks · floor camera`}>
           {tasks().map((t) => (
             <Row key={t.id} clip={ours.find((c) => c.cluster_id === t.id)} label={t.label} value={ours.filter((c) => c.cluster_id === t.id).length} unit="takes" />
           ))}

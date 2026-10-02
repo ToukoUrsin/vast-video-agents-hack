@@ -155,7 +155,7 @@ export function gerund(stepText: string) {
   // "Fold bottom flaps" -> "folding bottom flaps"; good enough for the spoken intro
   const [verb, ...rest] = stepText.split(' ')
   const v = verb.toLowerCase()
-  const irregular: Record<string, string> = { put: 'putting', tape: 'taping', close: 'closing', remove: 'removing', pour: 'pouring' }
+  const irregular: Record<string, string> = { put: 'putting', tape: 'taping', close: 'closing', remove: 'removing', pour: 'pouring', swap: 'swapping' }
   let g = irregular[v]
   if (!g) g = v.endsWith('e') && !v.endsWith('ee') ? v.slice(0, -1) + 'ing' : v + 'ing'
   return [g, ...rest].join(' ')

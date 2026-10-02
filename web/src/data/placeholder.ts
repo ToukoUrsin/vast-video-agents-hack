@@ -10,7 +10,7 @@ export const SITES: Site[] = [
   { id: 'neighborhood', name: 'Neighborhood street', kind: 'street', source: 'stock' },
   { id: 'sf', name: 'SF streets', kind: 'city', source: 'stock' },
   { id: 'smartspace', name: 'Indoor smart space', kind: 'indoor', source: 'stock' },
-  { id: 'studio', name: 'Our bench', kind: 'task-lego', source: 'ours' },
+  { id: 'studio', name: 'Our floor', kind: 'task-caps', source: 'ours' },
 ]
 
 const SITE_COUNTS: Record<string, number> = {
@@ -34,9 +34,9 @@ const SITE_CLUSTERS: Record<string, [string, number][]> = {
 
 /** Cluster centres in embedding space (roughly -1..1). */
 const CENTRES: Record<string, [number, number]> = {
-  'lego-tower': [-0.3, -0.06],
+  'cap-swap': [-0.3, -0.06],
   'cup-pyramid': [0.12, -0.14],
-  'pour-drink': [-0.08, 0.44],
+  'vast-astronaut': [-0.08, 0.44],
   forklift: [-0.66, -0.4],
   aisle: [-0.62, 0.46],
   truck: [0.66, -0.46],
@@ -85,23 +85,30 @@ const CAPTIONS: Record<string, string[]> = {
 
 export const CLUSTERS: Cluster[] = [
   {
-    id: 'lego-tower',
-    label: 'Lego assembly',
+    id: 'cap-swap',
+    label: 'Cap swap',
     source: 'ours',
     tint: '#D2C3A6',
     steps: [
-      { id: 'lt1', text: 'Place the base plate flat on the table', expert_clip_id: 'ours-lego-1', expert_start_s: 0, expert_end_s: 4 },
-      { id: 'lt2', text: 'Put a red brick on it', expert_clip_id: 'ours-lego-1', expert_start_s: 4, expert_end_s: 8 },
+      { id: 'cs1', text: 'Take the green cap off the Mountain Dew', expert_clip_id: 'ours-caps-1', expert_start_s: 0, expert_end_s: 4 },
+      { id: 'cs2', text: 'Take the black cap off the Coca-Cola', expert_clip_id: 'ours-caps-1', expert_start_s: 4, expert_end_s: 8 },
+      { id: 'cs3', text: "Swap the two bottles' places", expert_clip_id: 'ours-caps-1', expert_start_s: 8, expert_end_s: 12 },
       {
-        id: 'lt3',
-        text: 'Put a blue brick on the red one',
-        expert_clip_id: 'ours-lego-1',
-        expert_start_s: 8,
-        expert_end_s: 12,
-        common_mistake: 'Wait. The blue brick goes on the red one before the yellow.',
+        id: 'cs4',
+        text: 'Put the green cap on the Coca-Cola',
+        expert_clip_id: 'ours-caps-1',
+        expert_start_s: 12,
+        expert_end_s: 16,
+        common_mistake: 'That cap goes on the other bottle.',
       },
-      { id: 'lt4', text: 'Put a yellow brick on top', expert_clip_id: 'ours-lego-1', expert_start_s: 12, expert_end_s: 16 },
-      { id: 'lt5', text: 'Push the finished tower to the right side', expert_clip_id: 'ours-lego-2', expert_start_s: 16, expert_end_s: 20 },
+      {
+        id: 'cs5',
+        text: 'Put the black cap on the Mountain Dew',
+        expert_clip_id: 'ours-caps-2',
+        expert_start_s: 16,
+        expert_end_s: 20,
+        common_mistake: 'That cap goes on the other bottle.',
+      },
     ],
   },
   {
@@ -124,23 +131,23 @@ export const CLUSTERS: Cluster[] = [
     ],
   },
   {
-    id: 'pour-drink',
-    label: 'Pour a drink',
+    id: 'vast-astronaut',
+    label: 'VAST astronaut',
     source: 'ours',
     tint: '#C9AC8E',
     steps: [
-      { id: 'pd1', text: 'Put a cup on the table', expert_clip_id: 'ours-pour-1', expert_start_s: 0, expert_end_s: 3 },
-      { id: 'pd2', text: 'Open the bottle', expert_clip_id: 'ours-pour-1', expert_start_s: 3, expert_end_s: 7 },
-      { id: 'pd3', text: 'Pour until the cup is about half full', expert_clip_id: 'ours-pour-1', expert_start_s: 7, expert_end_s: 13 },
+      { id: 'va1', text: 'Put the round base plate down', expert_clip_id: 'ours-astro-1', expert_start_s: 0, expert_end_s: 3 },
+      { id: 'va2', text: 'Put the legs on the base', expert_clip_id: 'ours-astro-1', expert_start_s: 3, expert_end_s: 7 },
       {
-        id: 'pd4',
-        text: 'Close the bottle cap',
-        expert_clip_id: 'ours-pour-1',
-        expert_start_s: 13,
-        expert_end_s: 16,
-        common_mistake: 'Close the bottle cap before you move the cup.',
+        id: 'va3',
+        text: 'Put the torso on the legs',
+        expert_clip_id: 'ours-astro-1',
+        expert_start_s: 7,
+        expert_end_s: 11,
+        common_mistake: 'The torso goes on the legs before the head.',
       },
-      { id: 'pd5', text: 'Move the cup forward', expert_clip_id: 'ours-pour-2', expert_start_s: 16, expert_end_s: 19 },
+      { id: 'va4', text: 'Put the head and helmet on', expert_clip_id: 'ours-astro-1', expert_start_s: 11, expert_end_s: 15 },
+      { id: 'va5', text: 'Put the staff in its hand', expert_clip_id: 'ours-astro-2', expert_start_s: 15, expert_end_s: 18 },
     ],
   },
   archive('forklift', 'Forklift moving pallet', '#8FA2B4', ['Approach the pallet', 'Lower the forks', 'Lift the load', 'Reverse out', 'Drive to the bay']),
@@ -167,15 +174,15 @@ function archive(id: string, label: string, tint: string, steps: string[]): Clus
 }
 
 const TAKES: Array<{ id: string; task: string; take: number; score: number; caption: string }> = [
-  { id: 'ours-lego-1', task: 'lego-tower', take: 1, score: 95, caption: 'Person sets the base plate down, stacks red, blue and yellow bricks and slides the tower right.' },
-  { id: 'ours-lego-2', task: 'lego-tower', take: 2, score: 88, caption: 'Person builds the red, blue, yellow tower on the base plate, a little slower.' },
-  { id: 'ours-lego-3', task: 'lego-tower', take: 3, score: 54, caption: 'Person puts the yellow brick straight on the red one and skips the blue brick.' },
-  { id: 'ours-cups-1', task: 'cup-pyramid', take: 1, score: 93, caption: 'Person lines up three cups upside down, adds two and one on top, then stacks them.' },
-  { id: 'ours-cups-2', task: 'cup-pyramid', take: 2, score: 86, caption: 'Person builds a three-two-one cup pyramid and takes it down into one stack.' },
+  { id: 'ours-caps-1', task: 'cap-swap', take: 1, score: 95, caption: 'Person sitting on the floor uncaps both bottles, swaps them and puts each cap on the other bottle.' },
+  { id: 'ours-caps-2', task: 'cap-swap', take: 2, score: 87, caption: 'Person swaps the Mountain Dew and Coca-Cola and trades their caps, a little slower.' },
+  { id: 'ours-caps-3', task: 'cap-swap', take: 3, score: 52, caption: 'Person swaps the bottles but puts each cap back on its own bottle.' },
+  { id: 'ours-cups-1', task: 'cup-pyramid', take: 1, score: 93, caption: 'Person lines up three clear cups upside down, adds two and one on top, then nests them.' },
+  { id: 'ours-cups-2', task: 'cup-pyramid', take: 2, score: 86, caption: 'Person builds a three-two-one cup pyramid on the floor and takes it down into one stack.' },
   { id: 'ours-cups-3', task: 'cup-pyramid', take: 3, score: 58, caption: 'Person starts the pyramid with only two cups on the bottom row.' },
-  { id: 'ours-pour-1', task: 'pour-drink', take: 1, score: 94, caption: 'Person sets a cup down, opens the bottle, pours half a cup and closes the cap.' },
-  { id: 'ours-pour-2', task: 'pour-drink', take: 2, score: 85, caption: 'Person pours a drink to about half and recaps the bottle before moving the cup.' },
-  { id: 'ours-pour-3', task: 'pour-drink', take: 3, score: 49, caption: 'Person pours the drink and moves the cup forward with the bottle still open.' },
+  { id: 'ours-astro-1', task: 'vast-astronaut', take: 1, score: 94, caption: 'Person builds the white VAST astronaut on its round base and puts the staff in its hand.' },
+  { id: 'ours-astro-2', task: 'vast-astronaut', take: 2, score: 85, caption: 'Person assembles legs, torso, helmeted head and staff on the base plate.' },
+  { id: 'ours-astro-3', task: 'vast-astronaut', take: 3, score: 50, caption: 'Person puts the head straight on the legs and leaves the torso on the floor.' },
 ]
 
 function buildClips(): Clip[] {
@@ -213,7 +220,7 @@ function buildClips(): Clip[] {
     const off = (100 - t.score) / 100
     clips.push({
       clip_id: t.id,
-      camera_id: 'bench-cam1',
+      camera_id: 'floor-cam1',
       location: 'studio',
       source: 'ours',
       thumbnail_url: null,

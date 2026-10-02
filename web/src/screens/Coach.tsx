@@ -17,7 +17,7 @@ const VIDEO = { x: 96, y: 152, w: 1184, h: 666 }
 export function Coach() {
   const { setSession } = useApp()
   const { videoRef, camera, retry } = useCamera()
-  const task = getCluster(params.get('task') ?? 'lego-tower') ?? tasks()[0]
+  const task = getCluster(params.get('task') ?? 'cap-swap') ?? tasks()[0]
   // Live by default (Cosmos via our server). ?checker=mock = rehearsal: N / M drive the steps.
   const rehearsal = params.get('checker') === 'mock'
   const mock = useMemo(() => new MockStepChecker(), [])

@@ -6,6 +6,7 @@ import { demoResult, expertClipFor, fmt } from '../coach/scoring'
 import type { SessionResult } from '../coach/types'
 import { Thumb } from '../ui/Thumb'
 import { ExpertClip } from '../ui/ExpertClip'
+import { traceStats, useTrace, WEAVE_PROJECT } from '../coach/trace'
 
 const params = new URLSearchParams(location.search)
 
@@ -26,7 +27,34 @@ export function Score() {
     }
   }, [session, setSession])
 
-  return <ScoreCard key={replay} result={result} isDemo={!session} pending={pending} />
+  return (
+    <>
+      <ScoreCard key={replay} result={result} isDemo={!session} pending={pending} />
+      {session && <SessionFooter />}
+    </>
+  )
+}
+
+/** One line under the card: how many live checks the session took and how fast they were. */
+function SessionFooter() {
+  const { checks, median } = traceStats(useTrace())
+  if (!checks) return null
+  return (
+    <motion.p
+      className="tnum absolute bottom-12 left-24 font-mono text-[16px] text-ink-3"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ delay: 2.2, duration: 0.6 }}
+    >
+      <span className="text-ink-2">{checks} live checks</span>
+      {median != null && (
+        <>
+          {' · '}median <span className="text-ink-2">{(median / 1000).toFixed(1)} s</span> per check
+        </>
+      )}
+      {' · '}traces in W&amp;B Weave · {WEAVE_PROJECT}
+    </motion.p>
+  )
 }
 
 async function scoreWithLlm(s: SessionResult): Promise<SessionResult> {

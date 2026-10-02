@@ -1,5 +1,6 @@
 import type { Cluster, Step } from '../data/types'
 import type { CheckResult, Frame, Recognition, StepChecker, TaskRecognizer } from './types'
+import { recordCheck } from './trace'
 
 type Command = 'done' | 'mistake'
 
@@ -73,6 +74,7 @@ export class HttpStepChecker implements StepChecker {
   async check(frames: Frame[], step: Step, task: Cluster): Promise<CheckResult> {
     if (!frames.length) return { done: false, state: 'working', error: 'no camera frames' }
     const i = task.steps.findIndex((s) => s.id === step.id)
+    const t0 = performance.now()
     try {
       const res = await fetch(this.url, {
         method: 'POST',
@@ -85,14 +87,44 @@ export class HttpStepChecker implements StepChecker {
           next_step: task.steps[i + 1]?.text ?? null,
         }),
       })
-      if (!res.ok) return { done: false, state: 'working', error: `server ${res.status}` }
+      if (!res.ok) {
+        trace(step.text, i, t0, { error: `server ${res.status}` })
+        return { done: false, state: 'working', error: `server ${res.status}` }
+      }
       const j = (await res.json()) as { state?: string; done?: boolean; issue?: string; error?: string; advance_to?: number; tentative?: boolean; confident?: boolean }
+      trace(step.text, i, t0, j)
       const state = (['done', 'working', 'mistake'].includes(j.state ?? '') ? j.state : j.done ? 'done' : 'working') as CheckResult['state']
       const advanceTo = typeof j.advance_to === 'number' && j.advance_to > i ? j.advance_to : undefined
       return { state, done: state === 'done', issue: j.issue || undefined, error: j.error, advanceTo, tentative: !!j.tentative, confident: !!j.confident }
     } catch (e) {
+      trace(step.text, i, t0, { error: (e as Error).message || 'unreachable' })
       return { done: false, state: 'working', error: (e as Error).message || 'unreachable' }
     }
+  }
+}
+
+/** Side log for the reasoning-trace drawer; must never affect the check result. */
+function trace(step: string, stepIndex: number, t0: number, j: Record<string, unknown>) {
+  try {
+    const num = (v: unknown) => (typeof v === 'number' ? v : undefined)
+    recordCheck({
+      at: Date.now(),
+      step,
+      stepIndex,
+      state: typeof j.state === 'string' ? j.state : undefined,
+      observation: (j.observation as Record<string, unknown> | string | undefined) ?? null,
+      completed: Array.isArray(j.completed_steps) ? (j.completed_steps as number[]) : [],
+      advanceTo: num(j.advance_to),
+      issue: typeof j.issue === 'string' && j.issue ? j.issue : undefined,
+      observeMs: num(j.observe_ms),
+      judgeMs: num(j.judge_ms),
+      serverMs: num(j.latency_ms),
+      roundTripMs: performance.now() - t0,
+      judge: typeof j.judge === 'string' ? j.judge : undefined,
+      error: typeof j.error === 'string' ? j.error : undefined,
+    })
+  } catch {
+    // tracing is best effort
   }
 }
 

@@ -582,7 +582,10 @@ async def identify_task(frames: list[bytes], cands: list[dict], method: str | No
                 used = "embed-zero-shot"
             i = int(np.argmax(sims))
             margin = float(np.sort(sims)[-1] - np.sort(sims)[-2]) if len(sims) > 1 else 1.0
-            if used == "embed-nearest-task-cluster" or margin > 0.02 or method == "embed":
+            # nearest learned task only when the match is strong; weak matches (empty floor, other scenes)
+            # go to Cosmos Reason, which can answer "none"
+            strong = float(np.max(sims)) >= 0.82 if used == "embed-nearest-task-cluster" else margin > 0.02
+            if strong or method == "embed":
                 return {"i": i, "confidence": float(conf[i]), "method": used, "scores": [round(float(s), 4) for s in sims]}
         except Exception as e:
             print("identify embed failed:", e)

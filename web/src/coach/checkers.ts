@@ -86,10 +86,10 @@ export class HttpStepChecker implements StepChecker {
         }),
       })
       if (!res.ok) return { done: false, state: 'working', error: `server ${res.status}` }
-      const j = (await res.json()) as { state?: string; done?: boolean; issue?: string; error?: string; advance_to?: number; tentative?: boolean }
+      const j = (await res.json()) as { state?: string; done?: boolean; issue?: string; error?: string; advance_to?: number; tentative?: boolean; confident?: boolean }
       const state = (['done', 'working', 'mistake'].includes(j.state ?? '') ? j.state : j.done ? 'done' : 'working') as CheckResult['state']
       const advanceTo = typeof j.advance_to === 'number' && j.advance_to > i ? j.advance_to : undefined
-      return { state, done: state === 'done', issue: j.issue || undefined, error: j.error, advanceTo, tentative: !!j.tentative }
+      return { state, done: state === 'done', issue: j.issue || undefined, error: j.error, advanceTo, tentative: !!j.tentative, confident: !!j.confident }
     } catch (e) {
       return { done: false, state: 'working', error: (e as Error).message || 'unreachable' }
     }

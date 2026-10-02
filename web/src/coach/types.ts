@@ -23,6 +23,8 @@ export interface CheckResult {
   advanceTo?: number
   /** Mistake seen while hands were still on the objects: needs a longer streak before it is spoken */
   tentative?: boolean
+  /** Mistake with hands off and both frames agreeing: speak on the first reading */
+  confident?: boolean
   /** Model latency to show in the status line; measured if omitted */
   latencyMs?: number
 }

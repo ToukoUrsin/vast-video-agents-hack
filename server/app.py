@@ -115,8 +115,17 @@ def _norm(v) -> str:
     return str(v or "").strip().lower()
 
 
-def check_cap_swap(o: dict, cur: int) -> tuple[set[int], str]:
+SESSIONS: dict[str, dict] = {}  # session id -> remembered starting layout
+
+
+def check_cap_swap(o: dict, cur: int, mem: dict | None = None) -> tuple[set[int], str]:
     dew, coke, left = _norm(o.get("mountain_dew_cap")), _norm(o.get("coca_cola_cap")), _norm(o.get("left_bottle"))
+    mem = mem if mem is not None else {}
+    side = "coca" if "coca" in left else ("dew" if "dew" in left else "")
+    # remember which bottle started on the camera's left (orientation-proof swap detection)
+    if side and "start_left" not in mem and cur <= 1:
+        mem["start_left"] = side
+    swapped = bool(side) and "start_left" in mem and side != mem["start_left"]
     loose = [_norm(c) for c in (o.get("loose_caps_on_floor") or []) if isinstance(c, str)]
     # a cap lying on the floor cannot also be on a bottle: trust the floor reading
     if "black" in loose:
@@ -133,17 +142,17 @@ def check_cap_swap(o: dict, cur: int) -> tuple[set[int], str]:
         vis.add(1)
     if coke != "black cap on":
         vis.add(2)
-    if "coca" in left:
+    if swapped:
         vis.add(3)
     if coke == "green cap on":
         vis |= {1, 4}
     if dew == "black cap on":
         vis |= {2, 5}
     issue = ""
-    if cur >= 3 and dew == "green cap on" and "coca" in left:
+    if cur >= 3 and dew == "green cap on" and swapped:
         issue = "That green cap goes on the Coca-Cola, not the Mountain Dew."
     # (no "black cap on the Coca-Cola" check: Cosmos misreads the open Coke neck as capped)
-    elif cur == 2 and (4 in vis or 5 in vis) and 3 not in vis:
+    elif cur == 2 and (4 in vis or 5 in vis) and 3 not in vis and "start_left" in mem:
         issue = "Swap the two bottles before you put the caps back."
     return vis, issue
 
@@ -155,7 +164,7 @@ def _int(v) -> int:
         return 0
 
 
-def check_cup_pyramid(o: dict, cur: int) -> tuple[set[int], str]:
+def check_cup_pyramid(o: dict, cur: int, mem: dict | None = None) -> tuple[set[int], str]:
     # Cosmos counts "on the floor" vs "resting on other cups" far better than rows (the top cup is often
     # at the frame edge with this low camera): 3/0 = row, 3/2 = second level, 3/3 = full 3-2-1 pyramid.
     floor, up = _int(o.get("cups_standing_on_floor")), _int(o.get("cups_resting_on_other_cups"))
@@ -177,7 +186,7 @@ def check_cup_pyramid(o: dict, cur: int) -> tuple[set[int], str]:
     return vis, issue
 
 
-def check_vast_astronaut(o: dict, cur: int) -> tuple[set[int], str]:
+def check_vast_astronaut(o: dict, cur: int, mem: dict | None = None) -> tuple[set[int], str]:
     if o.get("hidden_by_hands") in (True, "true"):
         return set(), ""
     keys = ["base_plate_down", "legs_on_base", "torso_on_legs", "head_or_helmet_on", "staff_in_hand"]
@@ -400,7 +409,7 @@ def _judge_sync(prompt: str) -> str:
 
 
 @op(postprocess_inputs=_drop_frames)
-async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict:
+async def observe_and_judge(task_id: str, cur: int, frames: list[bytes], session: str = "") -> dict:
     d = TASK_DEFS[task_id]
     t0 = time.perf_counter()
     sysmsg = "You are a precise vision sensor. Output only one JSON object, no prose."
@@ -426,7 +435,8 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
     fn = TASK_CHECKS.get(task_id)
     if fn and isinstance(obs, dict):
         # fixed completion checks per step over Cosmos's structured scene report
-        visible, wrong = fn(obs, cur)
+        mem = SESSIONS.setdefault(f"{session}:{task_id}", {}) if session else {}
+        visible, wrong = fn(obs, cur, mem)
         judge = "step-checks"
     else:
         raw = await asyncio.to_thread(_judge_sync, judge_prompt(d["label"], d["steps"], cur, obs_text, d.get("done_when")))
@@ -498,7 +508,7 @@ async def check_step(req: Request):
                 cur = i
     try:
         if d and cur is not None:
-            res = await observe_and_judge(tid, cur, frames)
+            res = await observe_and_judge(tid, cur, frames, str(data.get("session") or ""))
             res["method"] = "cosmos-observe+llm-judge"
         else:  # unknown task/step text: single-pass Cosmos judgement
             res = await cosmos_check_step(task, step, frames, data.get("prev_step"), data.get("next_step"))

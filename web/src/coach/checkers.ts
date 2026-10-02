@@ -83,6 +83,7 @@ export class HttpStepChecker implements StepChecker {
           frames: frames.map((f) => f.url),
           task: task.label,
           step: step.text,
+          session: coachSession,
           prev_step: task.steps[i - 1]?.text ?? null,
           next_step: task.steps[i + 1]?.text ?? null,
         }),
@@ -128,6 +129,9 @@ function trace(step: string, stepIndex: number, t0: number, j: Record<string, un
   }
 }
 
+/** One id per coaching session so the server can remember the starting layout (e.g. bottle order). */
+let coachSession = `s${Date.now()}`
+
 /** Live recognizer: /api/identify embeds the first seconds and picks the nearest learned task. */
 export class HttpTaskRecognizer implements TaskRecognizer {
   private resolve: (idOrLabel: string) => Cluster | undefined
@@ -136,6 +140,8 @@ export class HttpTaskRecognizer implements TaskRecognizer {
     this.resolve = resolve
   }
   async recognize(frames: Frame[]): Promise<Recognition | null> {
+    // recognition only runs at the start of a session: frames start near 0 ms
+    if (frames.length && frames[0].at < 1500) coachSession = `s${Date.now()}`
     if (!frames.length) {
       this.lastError = 'no camera frames'
       return null

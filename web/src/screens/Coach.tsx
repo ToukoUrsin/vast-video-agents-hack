@@ -6,13 +6,13 @@ import { MockStepChecker, MockTaskRecognizer } from '../coach/checkers'
 import { useCamera, useCoach, type CameraState } from '../coach/useCoach'
 import type { CoachState } from '../coach/machine'
 import { expertClipFor, fmt } from '../coach/scoring'
-import { Thumb } from '../ui/Thumb'
+import { ExpertClip } from '../ui/ExpertClip'
 
 const params = new URLSearchParams(location.search)
 const VIDEO = { x: 96, y: 152, w: 1184, h: 666 }
 
 export function Coach() {
-  const { setSession, dev } = useApp()
+  const { setSession } = useApp()
   const { videoRef, camera, retry } = useCamera()
   const task = getCluster(params.get('task') ?? 'packing-box') ?? tasks()[0]
   // Rehearsal adapters. Swap for HttpStepChecker / an embed-based recognizer when the server is up.
@@ -111,11 +111,6 @@ export function Coach() {
 
       <Rail state={state} elapsed={elapsed} />
 
-      {dev && (
-        <div className="absolute bottom-6 right-24 font-mono text-[14px] text-ink-3">
-          dev · Space start · N step done · M mistake · R reset · ?task=making-tea · ?mute
-        </div>
-      )}
     </div>
   )
 }
@@ -173,7 +168,7 @@ function CorrectionCard({ state }: { state: CoachState }) {
       transition={{ type: 'spring', stiffness: 300, damping: 32 }}
     >
       <div className="relative">
-        <Thumb clip={clip} className="aspect-video w-full" kenBurns />
+        <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={state.stepIndex} className="aspect-video w-full" />
         <div className="absolute left-3 top-3 rounded-full bg-stage/80 px-3 py-1 font-mono text-[14px] text-ink">
           Expert · {clip?.take_label ?? 'best take'} · {fmt(step.expert_start_s)}
         </div>

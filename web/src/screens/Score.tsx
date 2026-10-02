@@ -5,6 +5,7 @@ import { getClip, getCluster, tasks } from '../data'
 import { demoResult, expertClipFor, fmt } from '../coach/scoring'
 import type { SessionResult } from '../coach/types'
 import { Thumb } from '../ui/Thumb'
+import { ExpertClip } from '../ui/ExpertClip'
 
 const params = new URLSearchParams(location.search)
 
@@ -110,7 +111,7 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
                 )}
               </Frame>
               <Frame label={`Expert · ${expert?.take_label ?? 'best take'} · ${fmt(result.task.steps[m.stepIndex].expert_start_s)}`} tone="go">
-                <Thumb clip={expert} className="absolute inset-0" />
+                <ExpertClip clip={expert} start={result.task.steps[m.stepIndex].expert_start_s} end={result.task.steps[m.stepIndex].expert_end_s} variant={m.stepIndex} className="absolute inset-0" />
               </Frame>
             </div>
           </motion.div>

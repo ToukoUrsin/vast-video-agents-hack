@@ -8,11 +8,13 @@ export function Thumb({
   className = '',
   size = 'lg',
   kenBurns = false,
+  variant = 0,
 }: {
   clip: Clip | undefined
   className?: string
   size?: 'sm' | 'lg'
   kenBurns?: boolean
+  variant?: number
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
   const [v, setV] = useState(0)
@@ -25,13 +27,13 @@ export function Thumb({
   useEffect(() => {
     const c = ref.current
     if (!c || !clip) return
-    const img = getThumb(clip, size)
+    const img = getThumb(clip, size, variant)
     const w = img instanceof HTMLImageElement ? img.naturalWidth : img.width
     const h = img instanceof HTMLImageElement ? img.naturalHeight : img.height
     c.width = w
     c.height = h
     c.getContext('2d')!.drawImage(img, 0, 0)
-  }, [clip, size, v])
+  }, [clip, size, v, variant])
   return (
     <div className={`${/\b(absolute|fixed)\b/.test(className) ? '' : 'relative'} overflow-hidden bg-surface ${className}`}>
       <canvas

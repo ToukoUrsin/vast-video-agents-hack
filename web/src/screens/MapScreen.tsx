@@ -6,7 +6,7 @@ import type { Clip, Cluster } from '../data/types'
 import type { Camera, Rect } from '../lib/field'
 import { clusterLayout, fitGrid, type MapLayout } from '../lib/layouts'
 import { HoverCard } from '../ui/HoverCard'
-import { Thumb } from '../ui/Thumb'
+import { ExpertClip } from '../ui/ExpertClip'
 
 const AREA: Rect = { x: 96, y: 176, w: 1728, h: 800 }
 const GRID_AREA: Rect = { x: 96, y: 200, w: 1728, h: 760 }
@@ -17,7 +17,7 @@ const PANEL_X = 1232
 const gridTargets = fitGrid(ingestOrder, GRID_AREA, 6)
 
 export function MapScreen() {
-  const { field, mapPhase, setMapPhase, dev } = useApp()
+  const { field, mapPhase, setMapPhase } = useApp()
   const [layout, setLayout] = useState<MapLayout | null>(null)
   const [settled, setSettled] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<string | null>(null)
@@ -189,7 +189,6 @@ export function MapScreen() {
       <AnimatePresence>{cluster && <StepsPanel key={cluster.id} cluster={cluster} onClose={() => select(null)} />}</AnimatePresence>
       <AnimatePresence>{hover && hoverScreen && !selected && <HoverCard key={hover.clip.clip_id} clip={hover.clip} rect={hoverScreen} />}</AnimatePresence>
 
-      {dev && <div className="absolute bottom-4 right-6 font-mono text-[14px] text-ink-3">dev · Space cluster · click cluster · Esc close · R regrid</div>}
     </div>
   )
 }
@@ -239,7 +238,7 @@ function StepsPanel({ cluster, onClose }: { cluster: Cluster; onClose: () => voi
               <span className="tnum w-8 font-mono text-[20px] text-ink-3">{String(i + 1).padStart(2, '0')}</span>
               <span className="flex-1 text-[26px] leading-tight tracking-[-0.01em] text-ink">{step.text}</span>
               <div className="relative">
-                <Thumb clip={clip} className="h-[90px] w-[160px] rounded-[8px]" kenBurns />
+                <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={i} className="h-[90px] w-[160px] rounded-[8px]" />
                 <span className="tnum absolute bottom-1.5 right-1.5 rounded-[4px] bg-stage/80 px-1.5 font-mono text-[13px] text-ink-2">
                   {fmtS(step.expert_start_s)}–{fmtS(step.expert_end_s)}
                 </span>

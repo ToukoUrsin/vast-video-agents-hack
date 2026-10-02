@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Ctx, type AppCtx, type IngestState, type ScreenId } from './app/context'
 import { Stage } from './ui/Stage'
 import { TopBar } from './ui/TopBar'
+import { DevBar } from './ui/DevBar'
 import { FieldEngine } from './lib/field'
 import { library } from './data'
 import { Library } from './screens/Library'
@@ -75,6 +76,7 @@ export default function App() {
             {screen === 4 && <Score />}
           </motion.div>
         </AnimatePresence>
+        <DevBar />
       </Stage>
     </Ctx.Provider>
   )

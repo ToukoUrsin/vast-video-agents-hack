@@ -24,7 +24,7 @@ function stageProgress(k: number, elapsed: number) {
 }
 
 export function Library() {
-  const { field, ingest, setIngest, dev } = useApp()
+  const { field, ingest, setIngest } = useApp()
   const [elapsed, setElapsed] = useState(ingest.phase === 'done' ? Infinity : ingest.phase === 'running' ? performance.now() - ingest.startedAt : 0)
   const [hover, setHover] = useState<{ clip: Clip; rect: Rect } | null>(null)
 
@@ -125,7 +125,6 @@ export function Library() {
 
       <AnimatePresence>{hover && <HoverCard key={hover.clip.clip_id} clip={hover.clip} rect={hover.rect} />}</AnimatePresence>
 
-      {dev && ingest.phase === 'idle' && <div className="absolute left-[584px] top-[790px] font-mono text-[14px] text-ink-3">dev · Space starts ingest replay · R resets</div>}
     </div>
   )
 }

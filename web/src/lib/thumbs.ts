@@ -17,12 +17,13 @@ export const onThumbsChange = (fn: () => void) => {
   return () => listeners.delete(fn)
 }
 
-export function getThumb(clip: Clip, size: 'sm' | 'lg' = 'sm'): HTMLCanvasElement | HTMLImageElement {
-  const key = `${clip.clip_id}:${size}`
+/** variant > 0 renders another moment of the same placeholder scene (e.g. a later step). */
+export function getThumb(clip: Clip, size: 'sm' | 'lg' = 'sm', variant = 0): HTMLCanvasElement | HTMLImageElement {
+  const key = `${clip.clip_id}:${size}:${variant}`
   const hit = cache.get(key)
   if (hit) return hit
   const dim = size === 'sm' ? THUMB_SM : THUMB_LG
-  const canvas = renderScene(sceneFor(clip), dim.w, dim.h, hashString(clip.clip_id))
+  const canvas = renderScene(sceneFor(clip), dim.w, dim.h, hashString(clip.clip_id) + variant * 7919)
   cache.set(key, canvas)
   if (clip.thumbnail_url) {
     const img = new Image()

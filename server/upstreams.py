@@ -141,13 +141,13 @@ def wandb_client():
     )
 
 
-def llm(prompt: str, system: str = "You are a concise assistant.", max_tokens: int = 400, client=None) -> str:
+def llm(prompt: str, system: str = "You are a concise assistant.", max_tokens: int = 400, client=None, temperature: float = 0.2) -> str:
     c = client or wandb_client()
     r = c.chat.completions.create(
         model=LLM_MODEL,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
         max_tokens=max_tokens,
-        temperature=0.2,
+        temperature=temperature,
     )
     return r.choices[0].message.content or ""
 

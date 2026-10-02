@@ -140,7 +140,8 @@ def take(uri):
 with ThreadPoolExecutor(8) as ex:
     ok = sum(ex.map(thumb, picked))
 print("thumbs", ok, file=sys.stderr)
-ours_videos = sorted({r["original_video"] for r in rows if r["location"] == OURS_LOCATION})
-with ThreadPoolExecutor(4) as ex:
-    ok = sum(ex.map(take, ours_videos))
-print("takes", ok, "of", len(ours_videos), file=sys.stderr)
+if "--takes" in sys.argv:  # optional: small MP4 per take (the web app now ships its own in web/public/takes)
+    ours_videos = sorted({r["original_video"] for r in rows if r["location"] == OURS_LOCATION})
+    with ThreadPoolExecutor(4) as ex:
+        ok = sum(ex.map(take, ours_videos))
+    print("takes", ok, "of", len(ours_videos), file=sys.stderr)

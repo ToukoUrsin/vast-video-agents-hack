@@ -44,7 +44,7 @@ SITES = {
     "neighborhood": {"id": "neighborhood", "name": "Neighborhood cam", "kind": "street"},
     "san_francisco": {"id": "sf", "name": "SF streets", "kind": "city"},
     "indoor": {"id": "smartspace", "name": "Indoor smart space", "kind": "indoor"},
-    OURS_LOCATION: {"id": "studio", "name": "Our bench", "kind": "task-box"},
+    OURS_LOCATION: {"id": "studio", "name": "Our floor", "kind": "task-caps"},
 }
 STOCK_TINTS = ["#8FA2B4", "#93AEA7", "#A6A9AE", "#B79F9A", "#B3AC8F", "#9DA7BF", "#A3B39A", "#B8A7B5", "#9FB5B8"]
 OURS_TINTS = ["#D2C3A6", "#A9BBA2", "#C9AC8E", "#C4B2C9", "#B9C7D6"]
@@ -123,7 +123,7 @@ def name_clusters(groups: list[dict], use_llm: bool) -> list[dict]:
         + "\n\n".join(blocks)
     )
     try:
-        out = parse_json(llm(prompt, system="You label video clusters. Output strict JSON only.", max_tokens=1500))
+        out = parse_json(llm(prompt, system="You label video clusters. Output strict JSON only.", max_tokens=1500, temperature=0))
         if isinstance(out, dict):
             out = out.get("clusters") or ([out] if "label" in out else list(out.values())[0])
         res = list(fallback)
@@ -185,6 +185,54 @@ def short_caption(text: str, limit: int = 190) -> str:
     return out if len(out) <= limit + 60 else out[:limit].rsplit(" ", 1)[0] + "…"
 
 
+# Our tasks: clip-id prefix + tint match web/src/data/placeholder.ts; windows (s from take start) per step.
+OURS_STYLE = {
+    "cap-swap": {"prefix": "ours-caps", "tint": "#D2C3A6"},
+    "cup-pyramid": {"prefix": "ours-cups", "tint": "#A9BBA2"},
+    "vast-astronaut": {"prefix": "ours-astro", "tint": "#C9AC8E"},
+}
+EXPERT_WINDOWS = {
+    "cap-swap": [(0, 6), (14, 21), (21, 26), (30, 39), (30, 39)],
+    "cup-pyramid": [(2, 7), (7, 11), (12, 17), (17, 24)],
+    "vast-astronaut": [(0, 4), (3, 8), (7, 12), (11, 16), (15, 19)],
+}
+RATINGS = {"cap-swap": [92, 88, 71], "cup-pyramid": [94, 90, 58], "vast-astronaut": [90, 86, 62]}
+
+
+def load_task_defs() -> dict:
+    """TASK_DEFS from server/app.py without importing it (app import starts the server stack)."""
+    import ast
+
+    tree = ast.parse((HERE / "app.py").read_text())
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(getattr(t, "id", None) == "TASK_DEFS" for t in node.targets):
+            return ast.literal_eval(node.value)
+    return {}
+
+
+def summarize_takes(take_items: list[dict], use_llm: bool) -> dict[str, str]:
+    """One short sentence per take from its Cosmos segment captions (for hover cards)."""
+    if not take_items or not use_llm:
+        return {}
+    blocks = "\n\n".join(
+        f"Take {i}: task={t['label']}\n" + "\n".join(f"  [{s['segment_start_sec']:.0f}s] {s['reasoning_content'][:300]}" for s in t["segs"])
+        for i, t in enumerate(take_items)
+    )
+    prompt = (
+        "Below are per-segment Cosmos Reason captions of short recordings of a person doing a task on the floor. "
+        "For each take write ONE plain sentence (max 22 words) describing the actions in order (objects, hands). "
+        "Describe only; do not judge quality or correctness. "
+        'Return ONLY JSON: {"takes": [{"take": int, "caption": str}]}\n\n' + blocks
+    )
+    try:
+        out = parse_json(llm(prompt, system="You summarize video captions. Output strict JSON only.", max_tokens=900)) or {}
+        items = out.get("takes", out) if isinstance(out, dict) else out
+        return {take_items[int(o["take"])]["video"]: str(o["caption"]).strip() for o in items if 0 <= int(o["take"]) < len(take_items)}
+    except Exception as e:
+        print("take captions failed:", e, file=sys.stderr)
+        return {}
+
+
 def free_spot(xy: np.ndarray) -> list[float]:
     """Emptiest point of the normalised layout, where placeholder takes can sit."""
     g = np.linspace(-0.9, 0.9, 19)
@@ -239,7 +287,7 @@ def main() -> None:
     xy = layout_2d(T)
     lo, hi = xy.min(0), xy.max(0)
     xy = (xy - lo) / (hi - lo + 1e-9) * 2 - 1
-    xy_stock, xy_takes = xy[: len(stock)], xy[len(stock) :]
+    xy_stock, xy_takes = xy[: len(stock)], xy[len(stock) :].copy()
 
     # ---- clusters on archive caption vectors
     from sklearn.cluster import KMeans
@@ -291,6 +339,23 @@ def main() -> None:
         )
         print(f"  {cid:32s} {len(g['idx']):5d}  {dict(g['sites'].most_common(3))}", file=sys.stderr)
 
+    # ---- our takes all sit in one tight spot of the UMAP (same floor scene), on the crowded side of
+    # the archive. For legibility place each task group at a fixed slot in the empty top-left region of
+    # the layout; offsets of takes within a task keep their real UMAP direction (scaled x8).
+    ours_offset = {}
+    if take_items:
+        slots = {"cap-swap": (-0.8, -0.8), "cup-pyramid": (-0.15, -0.9), "vast-astronaut": (-0.45, -0.45)}
+        groups: dict[str, list[int]] = defaultdict(list)
+        for i, t in enumerate(take_items):
+            groups[t["task"]].append(i)
+        orig = xy[len(stock) :]
+        for j, (task, idx) in enumerate(sorted(groups.items())):
+            c = orig[idx].mean(0)
+            target = np.array(slots.get(task, (-0.6 + 0.3 * j, 0.0)))
+            for i in idx:
+                xy_takes[i] = target + (orig[i] - c) * 8
+            ours_offset[task] = [round(float(v), 3) for v in (target - c)]
+
     # ---- noise: displayed archive points far from their cluster's 2D centre
     sel_idx = [i for i, r in enumerate(stock) if r.get("selected")]
     cent2d = {c: xy_stock[labels == c].mean(0) for c in range(a.k)}
@@ -327,69 +392,72 @@ def main() -> None:
             }
         )
 
-    # ---- ours: clusters per task, steps from the best take
+    # ---- ours: one cluster per task. Steps come verbatim from server/app.py TASK_DEFS (the coach
+    # checks against those exact strings); expert clip = take 1 in web/public/takes (made by the UI).
+    task_defs = load_task_defs()
     by_task: dict[str, list[dict]] = defaultdict(list)
     for t, p in zip(take_items, xy_takes):
         t["xy"] = p
         by_task[t["task"]].append(t)
-    for n, (task_id, ts) in enumerate(sorted(by_task.items())):
-        ts.sort(key=lambda t: -(t["score"] if t["score"] is not None else 50))
-        best = ts[0]
-        learned = learn_steps(best["label"], best["segs"], use_llm)
+    take_caps = summarize_takes(take_items, use_llm)
+    for task_id in sorted(by_task, key=lambda k: list(OURS_STYLE).index(k) if k in OURS_STYLE else 99):
+        ts = sorted(by_task[task_id], key=lambda t: int(t["take"] or 9))
+        tdef = task_defs.get(task_id, {})
+        label = tdef.get("label") or ts[0]["label"]
+        style = OURS_STYLE.get(task_id, {"prefix": f"ours-{task_id}", "tint": OURS_TINTS[0]})
+        windows = EXPERT_WINDOWS.get(task_id, [])
+        expert_id = f"{style['prefix']}-1"
         for t in ts:
-            src_mp4 = CACHE / "takes" / f"{t['stem']}.mp4"
-            vid_url = None
-            if src_mp4.exists():
-                shutil.copyfile(src_mp4, CLIPS_DIR / f"{t['stem']}.mp4")
-                keep.add(f"{t['stem']}.mp4")
-                vid_url = f"/clips/{t['stem']}.mp4"
-            mid = t["segs"][len(t["segs"]) // 2]
-            thumb = CACHE / "thumbs" / f"{mid['pk']}.jpg"
-            if thumb.exists():
-                shutil.copyfile(thumb, CLIPS_DIR / f"{t['stem']}.jpg")
-                keep.add(f"{t['stem']}.jpg")
-            t["video_url"] = vid_url
+            n_take = int(t["take"] or 1)
+            score = t["score"] if t["score"] is not None else (RATINGS.get(task_id, [None] * 3)[n_take - 1] if n_take <= 3 else None)
             clips.append(
                 {
-                    "clip_id": t["stem"],
-                    "camera_id": mid.get("camera_id") or "bench-cam1",
+                    "clip_id": f"{style['prefix']}-{n_take}",
+                    "camera_id": t["segs"][0].get("camera_id") or "floor-cam1",
                     "location": "studio",
                     "source": "ours",
-                    "thumbnail_url": f"/clips/{t['stem']}.jpg" if thumb.exists() else None,
-                    "video_url": vid_url,
-                    "caption": " ".join(s["reasoning_content"].split(". ")[0] + "." for s in t["segs"][:3]),
+                    "thumbnail_url": f"/takes/{task_id}-{n_take}.jpg",
+                    "video_url": f"/takes/{task_id}-{n_take}.mp4",
+                    "caption": take_caps.get(t["video"]) or short_caption(t["segs"][0]["reasoning_content"]),
+                    "caption_full": " ".join(s["reasoning_content"] for s in t["segs"]),
                     "embedding2d": {"x": round(float(t["xy"][0]), 4), "y": round(float(t["xy"][1]), 4)},
                     "cluster_id": task_id,
-                    "score": t["score"],
-                    "duration_s": round(float(sum((s.get("duration") or 0) for s in t["segs"])), 1),
-                    "take_label": f"Take {t['take']}" if t["take"] else None,
+                    "score": score,
+                    "score_kind": "take rating",
+                    "take_quality": "sloppy" if n_take == 3 else "good",
+                    "take_label": f"Take {n_take}",
+                    "duration_s": round(float(max(s["segment_end_sec"] for s in t["segs"])), 1),
                     "vss_source": t["video"],
+                    "segments": len(t["segs"]),
                 }
             )
-        steps = [
-            {
-                "id": f"{task_id}-{j + 1}",
-                "text": s["text"],
-                "expert_clip_id": best["stem"],
-                "expert_start_s": s["start"],
-                "expert_end_s": s["end"],
-                **({"common_mistake": s["common_mistake"]} if s.get("common_mistake") else {}),
-            }
-            for j, s in enumerate(learned)
-        ]
-        clusters.append({"id": task_id, "label": best["label"], "source": "ours", "tint": OURS_TINTS[n % len(OURS_TINTS)], "steps": steps})
+        step_texts = tdef.get("steps") or [f"Step {i + 1}" for i in range(len(windows) or 4)]
+        steps = []
+        for j, text in enumerate(step_texts):
+            a_s, b_s = windows[j] if j < len(windows) else (j * 4, j * 4 + 4)
+            steps.append(
+                {
+                    "id": f"{task_id}-{j + 1}",
+                    "text": text,
+                    "expert_clip_id": expert_id,
+                    "expert_start_s": a_s,
+                    "expert_end_s": b_s,
+                    "expert_poster_url": f"/takes/{task_id}-step{j + 1}.jpg",
+                }
+            )
+        clusters.append({"id": task_id, "label": label, "source": "ours", "tint": style["tint"], "steps": steps})
         vis = [t["visual"] for t in ts if t["visual"] is not None]
         index.append(
             {
                 "id": task_id,
-                "label": best["label"],
+                "label": label,
                 "source": "ours",
                 "size": len(ts),
                 "text_centroid": [round(float(v), 5) for v in unit(np.mean([t["text"] for t in ts], axis=0))],
                 "visual_centroid": [round(float(v), 5) for v in unit(np.mean(vis, axis=0))] if vis else None,
                 "steps": [
-                    {"text": s["text"], "expert_url": best["video_url"], "start_s": s["expert_start_s"], "end_s": s["expert_end_s"]}
-                    for s in steps
+                    {"text": st["text"], "expert_url": f"/takes/{task_id}-1.mp4", "start_s": st["expert_start_s"], "end_s": st["expert_end_s"]}
+                    for st in steps
                 ],
             }
         )
@@ -408,9 +476,9 @@ def main() -> None:
     ts_all = sorted(r["upload_timestamp"] for r in rows if r.get("upload_timestamp"))
     started = datetime.fromisoformat(ts_all[0]).replace(tzinfo=timezone.utc) if ts_all else datetime.now(timezone.utc)
     n_seg = len(rows)
-    boxes = sum(int(r.get("detection_count") or 0) for r in rows)
-    if not boxes:
-        boxes = sum(sum(json.loads(r.get("object_counts") or "{}").values()) for r in rows)
+    # Objects = sum of per-segment object_counts (max instances of each class in any frame), the same
+    # quantity VSS dashboard/stats reports as instance_count. (detection_count is per-frame boxes, ~1000x larger.)
+    objects = sum(sum(json.loads(r.get("object_counts") or "{}").values()) for r in rows)
     snapshot = {
         "sites": sites,
         "clips": clips,
@@ -420,7 +488,7 @@ def main() -> None:
             "replay_s": 9,
             "stages": [
                 {"id": "segment", "label": "Segment", "total": n_seg, "unit": "clips"},
-                {"id": "detect", "label": "Detect", "model": "YOLO11", "total": boxes, "unit": "objects" if not rows[0].get("detection_count") else "boxes"},
+                {"id": "detect", "label": "Detect", "model": "YOLO11", "total": objects, "unit": "objects"},
                 {"id": "describe", "label": "Describe", "model": "Cosmos Reason", "total": n_seg, "unit": "captions"},
                 {"id": "embed", "label": "Embed", "model": "Cosmos Embed", "total": n_seg, "unit": "vectors"},
                 {"id": "store", "label": "VastDB", "total": n_seg, "unit": "rows"},
@@ -434,6 +502,8 @@ def main() -> None:
             "layout": "UMAP(cosine) of Cosmos Embed caption vectors",
             "clustering": f"k-means k={a.k} on Cosmos Embed caption vectors",
             "label_model": LLM_MODEL if use_llm else None,
+            "ours_layout": "task groups placed in the empty top-left of the map; take offsets within a task from UMAP x8",
+            "ours_offset": ours_offset,
             "free_spot": free_spot(np.array([[c["embedding2d"]["x"], c["embedding2d"]["y"]] for c in clips if c["source"] == "stock"])),
         },
     }

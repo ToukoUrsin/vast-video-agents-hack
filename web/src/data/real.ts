@@ -26,10 +26,29 @@ export function mergeReal(base: LibraryData, real: Partial<LibraryData>): Librar
     if (r.some((x) => x.source === 'ours')) return r
     return [...r.filter((x) => x.source !== 'ours'), ...b.filter((x) => x.source === 'ours')]
   }
+  // Real VSS-indexed takes win, but keep hand-written bits from base where ids/text match:
+  // curated take captions and per-step corrections (common_mistake) stay authoritative.
+  const baseClip = new Map(base.clips.map((c) => [c.clip_id, c]))
+  const baseStep = new Map(base.clusters.flatMap((k) => k.steps.map((s) => [`${k.id}|${s.text}`, s] as const)))
+  const clips = pick(base.clips, real.clips).map((c) => {
+    const b = c.source === 'ours' ? baseClip.get(c.clip_id) : undefined
+    return b ? { ...c, caption: b.caption || c.caption } : c
+  })
+  const clusters = pick(base.clusters, real.clusters).map((k) =>
+    k.source !== 'ours'
+      ? k
+      : {
+          ...k,
+          steps: k.steps.map((s) => {
+            const b = baseStep.get(`${k.id}|${s.text}`)
+            return b ? { ...b, ...s, common_mistake: s.common_mistake ?? b.common_mistake } : s
+          }),
+        },
+  )
   return {
     sites: pick(base.sites, real.sites),
-    clips: pick(base.clips, real.clips),
-    clusters: pick(base.clusters, real.clusters),
+    clips,
+    clusters,
     ingest: real.ingest ?? base.ingest,
   }
 }

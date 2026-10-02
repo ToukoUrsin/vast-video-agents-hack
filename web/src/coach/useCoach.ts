@@ -69,7 +69,8 @@ export function useCoach(opts: {
           dispatch({ type: 'TASK_DETECTED', task: rec.task, now: performance.now() })
           return
         }
-        dispatch({ type: 'ERROR', error: recognizer.lastError ?? 'recognition failed' })
+        // null + no error = nothing recognisable yet (normal); null + error = server problem
+        dispatch({ type: 'ERROR', error: recognizer.lastError ?? null })
         await new Promise((r) => setTimeout(r, 800))
       }
     })()
@@ -139,9 +140,6 @@ export function useCoach(opts: {
     if (state.utterance.tone === 'error') chime('error')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.utterance?.id])
-  useEffect(() => {
-    if (state.tick > 0) chime('good')
-  }, [state.tick])
   useEffect(() => () => stopSpeaking(), [])
 
   return {

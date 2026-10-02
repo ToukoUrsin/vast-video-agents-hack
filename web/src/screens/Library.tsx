@@ -103,6 +103,8 @@ export function Library() {
   })
 
   const ingested = Math.round(stageProgress(0, elapsed) * ingestOrder.length)
+  // the grid is a sample of the index; say so, so it doesn't contradict the pipeline counts
+  const indexed = library.ingest.stages[0]?.total ?? ingestOrder.length
   const stock = library.clips.filter((c) => c.source === 'stock').length
   const ours = library.clips.filter((c) => c.source === 'ours')
   const counts = siteCounts()
@@ -131,7 +133,14 @@ export function Library() {
           <span className="text-[22px] font-medium tracking-[-0.01em]">Library</span>
           <span className="tnum font-mono text-[20px] text-ink-2">
             <span className={ingested ? 'text-ink' : ''}>{ingested.toLocaleString('en-US')}</span>
-            <span className="text-ink-3"> / {ingestOrder.length}</span> clips
+            <span className="text-ink-3"> shown</span>
+            {indexed > ingestOrder.length && (
+              <>
+                <span className="text-ink-3"> of </span>
+                <MonoNumber value={indexed} />
+                <span className="text-ink-3"> indexed</span>
+              </>
+            )}
           </span>
         </div>
         <span className="font-mono text-[17px] text-ink-3">Replay of ingest run · {library.ingest.started_at}</span>

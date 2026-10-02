@@ -8,6 +8,7 @@ import { HttpStepChecker, HttpTaskRecognizer, MockStepChecker, MockTaskRecognize
 import { useCamera, useCoach, type CameraState } from '../coach/useCoach'
 import type { CoachState } from '../coach/machine'
 import { expertClipFor, fmt } from '../coach/scoring'
+import { chime } from '../coach/media'
 import { ExpertClip } from '../ui/ExpertClip'
 
 const params = new URLSearchParams(location.search)
@@ -40,6 +41,20 @@ export function Coach() {
     const id = setInterval(() => setNow(performance.now()), 250)
     return () => clearInterval(id)
   }, [state.phase])
+
+  // start watching on its own once the camera is live (the performer walks up silently)
+  useEffect(() => {
+    if (camera !== 'live' || state.phase !== 'idle') return
+    const id = setTimeout(start, 1200)
+    return () => clearTimeout(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [camera, state.phase])
+
+  // catch-up: tick several steps one by one, ~250 ms apart, each with its chime
+  const shownIndex = useStaggered(state.phase === 'idle' ? 0 : state.stepIndex, 250)
+  useEffect(() => {
+    if (shownIndex > 0) chime('good')
+  }, [shownIndex])
 
   useEffect(() => {
     if (state.result) setSession(state.result)
@@ -91,12 +106,12 @@ export function Coach() {
           className="pointer-events-none absolute inset-0 rounded-[20px]"
           animate={{ opacity: mistake ? 1 : 0 }}
           transition={{ duration: 0.35 }}
-          style={{ boxShadow: 'inset 0 0 0 2px #FF5A4E, inset 0 0 140px rgba(255,90,78,0.30)' }}
+          style={{ boxShadow: 'inset 0 0 0 2px #FF5A4E, inset 0 0 22px rgba(120,10,0,0.45)' }}
         />
 
         {/* detecting progress */}
         <AnimatePresence>
-          {state.phase === 'detecting' && (
+          {state.phase === 'detecting' && !state.error && (
             <motion.div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/5" exit={{ opacity: 0 }}>
               <motion.div className="h-full bg-wip" initial={{ width: '0%' }} animate={{ width: '100%' }} transition={{ duration: 4, ease: 'linear' }} />
             </motion.div>
@@ -131,10 +146,23 @@ export function Coach() {
         </AnimatePresence>
       </div>
 
-      <Rail state={state} elapsed={elapsed} rehearsal={rehearsal} forced={forced} />
+      <Rail state={state} shownIndex={shownIndex} elapsed={elapsed} rehearsal={rehearsal} forced={forced} />
 
     </div>
   )
+}
+
+/** Follows `target` one step at a time so a multi-step jump reads as progress. Jumps down instantly. */
+function useStaggered(target: number, ms: number) {
+  const [shown, setShown] = useState(target)
+  useEffect(() => {
+    if (shown > target) setShown(target)
+    else if (shown < target) {
+      const id = setTimeout(() => setShown((v) => Math.min(target, v + 1)), ms)
+      return () => clearTimeout(id)
+    }
+  }, [shown, target, ms])
+  return shown
 }
 
 function CameraEmpty({ state, onRetry }: { state: CameraState; onRetry: () => void }) {
@@ -183,16 +211,16 @@ function CorrectionCard({ state }: { state: CoachState }) {
   const clip = expertClipFor(task, state.stepIndex)
   return (
     <motion.div
-      className="absolute bottom-6 right-6 w-[440px] overflow-hidden rounded-[16px] border border-err/40 bg-stage/90"
-      initial={{ x: 480, opacity: 0 }}
+      className="absolute bottom-5 right-5 w-[336px] overflow-hidden rounded-[14px] border border-err/50 bg-stage/90"
+      initial={{ x: 380, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
-      exit={{ x: 480, opacity: 0 }}
+      exit={{ x: 380, opacity: 0 }}
       transition={{ type: 'spring', stiffness: 300, damping: 32 }}
     >
       <div className="relative">
         <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={state.stepIndex + 1} className="aspect-video w-full" />
-        <div className="absolute left-3 top-3 rounded-full bg-stage/80 px-3 py-1 font-mono text-[14px] text-ink">
-          Expert · {clip?.take_label ?? 'best take'} · {fmt(step.expert_start_s)}
+        <div className="absolute left-2.5 top-2.5 rounded-full bg-stage/80 px-2.5 py-0.5 font-mono text-[13px] text-ink">
+          Expert · {clip?.take_label ?? 'best take'}
         </div>
         <div className="absolute inset-x-0 bottom-0 h-[3px] bg-white/10">
           <motion.div
@@ -203,17 +231,16 @@ function CorrectionCard({ state }: { state: CoachState }) {
           />
         </div>
       </div>
-      <div className="px-5 pb-5 pt-4">
-        <div className="font-mono text-[15px] text-err">
-          Step {state.stepIndex + 1} · {step.text}
-        </div>
-        <p className="mt-2 text-[22px] leading-[1.35] text-ink">{state.issue}</p>
+      {/* the spoken correction is already in the caption; the card only says what to watch */}
+      <div className="px-4 pb-3.5 pt-3">
+        <p className="font-mono text-[14px] text-err">Do it like this · step {state.stepIndex + 1}</p>
+        <p className="mt-1 text-[18px] leading-[1.3] text-ink">{step.text}</p>
       </div>
     </motion.div>
   )
 }
 
-function Rail({ state, elapsed, rehearsal, forced }: { state: CoachState; elapsed: number; rehearsal: boolean; forced: boolean }) {
+function Rail({ state, shownIndex, elapsed, rehearsal, forced }: { state: CoachState; shownIndex: number; elapsed: number; rehearsal: boolean; forced: boolean }) {
   const task = state.task
   const latency = state.lastLatencyMs != null ? `${(state.lastLatencyMs / 1000).toFixed(1)} s` : null
   let status: { dot: string; text: string }
@@ -249,8 +276,8 @@ function Rail({ state, elapsed, rehearsal, forced }: { state: CoachState; elapse
 
       <div className="mt-10 flex flex-col">
         {task?.steps.map((step, i) => {
-          const done = i < state.stepIndex
-          const current = i === state.stepIndex && state.phase === 'coaching'
+          const done = i < shownIndex
+          const current = i === shownIndex && state.phase === 'coaching'
           const err = current && state.stepStatus === 'mistake'
           const rec = state.steps[i]
           return (
@@ -285,7 +312,7 @@ function Rail({ state, elapsed, rehearsal, forced }: { state: CoachState; elapse
       </div>
 
       <div className="mt-auto">
-      {task && state.phase === 'coaching' && state.stepStatus !== 'mistake' && <Reference task={task} stepIndex={state.stepIndex} />}
+      {task && state.phase === 'coaching' && state.stepStatus !== 'mistake' && <Reference task={task} stepIndex={shownIndex} />}
       <div className="flex items-center gap-3 border-t border-line pt-5">
         <span className="relative flex h-2.5 w-2.5">
           {(state.phase === 'detecting' || state.phase === 'coaching') && (

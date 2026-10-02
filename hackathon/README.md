@@ -109,4 +109,8 @@ VM keybindings: copy/paste `Ctrl+Shift+C` / `Ctrl+Shift+V`; zoom `Ctrl -` / `Ctr
 
 ## On-site instructions
 
-See [ONSITE.md](ONSITE.md). Photos from the venue go in [photos/](photos/).
+See [ONSITE.md](ONSITE.md) (VM passcode, team form). Photos in [photos/](photos/).
+
+## Strategy
+
+[ANALYSIS.md](ANALYSIS.md) applies our hackathon framework ([../framework/](../framework/)) to this event.

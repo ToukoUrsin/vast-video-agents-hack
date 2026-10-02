@@ -14,7 +14,7 @@ Keys: `1`–`4` screens, `Space` next beat, `R` reset coach, `T` force Cap swap 
 | 1:15 | Coach | – | **Mistake:** screws the green cap back onto the Mountain Dew, **lets go**, waits. |
 | 1:20 | Coach | (coach: "That green cap goes on the Coca-Cola, not the Mountain Dew." + expert clip) "It caught it, and it shows him how the expert did that exact step." | Takes the green cap off, puts it on the Coke, black cap on the Dew, hands off. |
 | 1:40 | Coach → Score (4) | "Done. And he gets a score with feedback written by Llama on W&B." | – |
-| 2:00 | Score | "Cosmos watches, VAST remembers, W&B coaches, all on CoreWeave GPUs. Every recording becomes a coach, and every attempt makes the library better." | – |
+| 2:00 | Score | "Cosmos watches, VAST remembers, W&B coaches, all on CoreWeave GPUs. Every recording becomes a coach." | – |
 
 ## If something goes wrong
 

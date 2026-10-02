@@ -15,7 +15,9 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env.local")
 
-SOCKS = os.environ.get("VSS_SOCKS_PROXY", "socks5://127.0.0.1:1080")
+# VSS_SOCKS_PROXY=none (or empty) when running inside the VAST network, e.g. on the team VM
+_socks = os.environ.get("VSS_SOCKS_PROXY", "socks5://127.0.0.1:1080")
+SOCKS = _socks if _socks.strip().lower() not in ("", "none", "direct") else None
 INGRESS_URL = os.environ.get("INGRESS_URL", "").rstrip("/")
 GPU_TOKEN = os.environ.get("GPU_BEARER_TOKEN", "")
 REASON_URL = os.environ.get("COSMOS_REASON_URL", "http://166.19.38.112:8001/v1")

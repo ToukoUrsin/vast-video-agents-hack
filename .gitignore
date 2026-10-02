@@ -48,3 +48,9 @@ verify-vm.sh
 
 # --- live screen ---
 screen/
+
+# --- our app ---
+node_modules/
+dist/
+.env.local
+web/.vite/

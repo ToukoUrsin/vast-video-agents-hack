@@ -226,7 +226,7 @@ def main() -> None:
                 "stem": stem,
                 "segs": segs,
                 "task": task_id,
-                "label": (tag_value(tags, "label") or task_id.replace("-", " ").capitalize()),
+                "label": ((tag_value(tags, "label") or "").replace("_", " ") or task_id.replace("-", " ").capitalize()),
                 "take": tag_value(tags, "take"),
                 "score": int(tag_value(tags, "score")) if (tag_value(tags, "score") or "").isdigit() else None,
                 "text": unit(np.mean([s["vectors"] for s in segs], axis=0)),
@@ -439,7 +439,7 @@ def main() -> None:
     }
     OUT_JSON.write_text(json.dumps(snapshot, ensure_ascii=False, separators=(",", ":")))
     TASK_INDEX.write_text(json.dumps({"generated_at": snapshot["meta"]["generated_at"], "clusters": index}))
-    print(f"wrote {OUT_JSON.relative_to(ROOT)}: {len(clips)} clips, {len(clusters)} clusters", file=sys.stderr)
+    print(f"wrote {OUT_JSON}: {len(clips)} clips, {len(clusters)} clusters", file=sys.stderr)
     for c in clusters:
         print(f"  [{c['source']}] {c['label']}: {' / '.join(s['text'] for s in c['steps'])}", file=sys.stderr)
 

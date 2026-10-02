@@ -162,12 +162,14 @@ def check_prompt(task: str, step: str, prev: str | None, nxt: str | None) -> str
         ctx += f'Next step (not yet expected): "{nxt}". '
     return (
         f'Task: "{task}". Current step: "{step}". {ctx}\n'
-        "Look at the frames, oldest first. Decide:\n"
-        '- "done": true only if the frames clearly show this step completed or being finished.\n'
-        '- "issue": if the person is visibly doing something wrong (wrong order, skipped this step, unsafe or '
-        "sloppy), one short spoken correction under 15 words addressed to them, e.g. "
-        '"Tape the bottom seam before the item goes in." Otherwise "".\n'
-        'Answer ONLY with JSON: {"done": true|false, "issue": "..."}'
+        "Look at the frames, oldest first, and classify the current step:\n"
+        '- "done": the frames clearly show this step completed or being finished.\n'
+        '- "working": not finished yet, the person is preparing, idle, or still on it. This is the normal case.\n'
+        '- "mistake": the person visibly does something wrong for this step: skips it and moves on to a later '
+        "step, does it out of order, or does it unsafely or sloppily. Only use this when the error is visible.\n"
+        'If "mistake", give "issue": one short spoken correction under 15 words addressed to them, e.g. '
+        '"Tape the bottom seam before the item goes in." Otherwise "issue" is "".\n'
+        'Answer ONLY with JSON: {"state": "done"|"working"|"mistake", "issue": "..."}'
     )
 
 
@@ -175,19 +177,21 @@ def check_prompt(task: str, step: str, prev: str | None, nxt: str | None) -> str
 async def cosmos_check_step(task: str, step: str, frames: list[bytes], prev: str | None = None, nxt: str | None = None) -> dict:
     raw = await U.reason(http, check_prompt(task, step, prev, nxt), frames, max_tokens=120, system=CHECK_SYSTEM)
     parsed = U.parse_json(raw)
-    if isinstance(parsed, dict) and "done" in parsed:
-        done = parsed.get("done")
-        done = done if isinstance(done, bool) else str(done).strip().lower() in ("true", "yes", "1")
+    state = ""
+    if isinstance(parsed, dict):
+        state = str(parsed.get("state") or "").strip().lower()
+        if not state and "done" in parsed:  # older schema
+            d = parsed.get("done")
+            state = "done" if (d is True or str(d).lower() in ("true", "yes", "1")) else "working"
         issue = str(parsed.get("issue") or "").strip()
     else:  # tolerate prose
         low = raw.lower()
-        done = '"done": true' in low or low.startswith("yes")
+        state = "done" if ('"done"' in low or low.startswith("yes")) else "mistake" if "mistake" in low else "working"
         issue = ""
-    if issue.lower() in ("none", "n/a", "null", "no issue", "-"):
+    done = state == "done"
+    if state != "mistake" or issue.lower() in ("", "none", "n/a", "null", "no issue", "-"):
         issue = ""
-    if done:
-        issue = ""
-    return {"done": done, "issue": issue, "raw": raw[:300]}
+    return {"done": done, "state": state or "working", "issue": issue, "raw": raw[:300]}
 
 
 @app.post("/api/check-step")
@@ -204,7 +208,7 @@ async def check_step(req: Request):
         ms = int((time.perf_counter() - t0) * 1000)
         return {"done": False, "issue": "", "error": f"cosmos: {type(e).__name__}", "latency_ms": ms, "latencyMs": ms}
     ms = int((time.perf_counter() - t0) * 1000)
-    return {"done": res["done"], "issue": res["issue"], "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL}
+    return {"done": res["done"], "state": res["state"], "issue": res["issue"], "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL}
 
 
 # ------------------------------------------------------------------ identify

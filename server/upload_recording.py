@@ -23,9 +23,9 @@ from pathlib import Path
 from upstreams import VSS
 
 STEP_PROMPT = (
-    "This video shows a person performing a hands-on task at a workbench: {label}. "
+    "This video shows a person performing a hands-on task on the floor: {label}. "
     "Describe each step of the task being performed, in order, as short imperative steps "
-    "(for example 'Put a red brick on it', 'Close the bottle cap'). For each step say what the hands "
+    "(for example 'Take the green cap off the Mountain Dew', 'Put 2 cups on top'). For each step say what the hands "
     "do, which objects and tools are used, and whether it was done correctly and completely. "
     "Point out anything skipped, done out of order, or done sloppily. "
     "Be concrete and visual; do not guess at things not visible."

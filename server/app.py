@@ -672,7 +672,8 @@ def llm_feedback(task: str, steps: list[dict]) -> dict:
         "about 5-10; skipped steps cost more). Then write exactly two feedback sentences in a warm, specific "
         "coach voice, 10-20 words each, full sentences addressed to the trainee as 'you':\n"
         "1) what you did well, naming concrete steps;\n"
-        "2) the one thing to do differently next time and why it matters for the result.\n"
+        "2) the one thing to do differently next time and why it matters for the result. If there were no "
+        "corrections, make line 2 a concrete tip from the step timings instead (e.g. the slowest step).\n"
         'Example: ["You set up the base and stacked the red brick cleanly on the first try.", '
         '"Next time place the blue brick before the yellow one, or the tower is built in the wrong order."]\n'
         'Return ONLY JSON: {"score": int, "feedback": ["...", "..."]}'

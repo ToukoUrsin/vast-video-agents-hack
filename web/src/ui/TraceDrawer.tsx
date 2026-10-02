@@ -1,4 +1,4 @@
-// Reasoning trace drawer (Coach, key D): the last checks as rows. What Cosmos Reason reported,
+// Reasoning trace drawer (Coach, key D): the last checks as rows. What the vision model reported,
 // which steps the fixed per-step checks counted, and where the time went.
 import { motion } from 'framer-motion'
 import { traceStats, useTrace, WEAVE_PROJECT, type TraceRow } from '../coach/trace'
@@ -9,6 +9,7 @@ export function TraceDrawer({ steps }: { steps: number }) {
   const rows = useTrace()
   const last = rows.slice(-SHOW).reverse()
   const { checks, median } = traceStats(rows)
+  const model = modelLabel(rows.at(-1)?.model)
   return (
     <motion.div
       className="pointer-events-auto absolute bottom-6 left-24 z-30 w-[1184px] rounded-[20px] border border-line-strong bg-surface shadow-[0_-24px_48px_rgba(0,0,0,0.5)] px-8 pb-5 pt-6"
@@ -19,7 +20,7 @@ export function TraceDrawer({ steps }: { steps: number }) {
     >
       <div className="flex items-baseline gap-4">
         <h3 className="text-[22px] font-medium tracking-[-0.015em] text-ink">Reasoning trace</h3>
-        <span className="font-mono text-[15px] text-ink-3">Cosmos Reason observes · fixed checks per step · a step ticks after two agreeing readings</span>
+        <span className="font-mono text-[15px] text-ink-3">{model} observes · fixed checks per step · a step ticks after two agreeing readings</span>
         <span className="ml-auto flex items-center gap-2 font-mono text-[14px] text-ink-3">
           <kbd className="rounded-[5px] border border-line-strong px-1.5 text-ink-2">D</kbd> close
         </span>
@@ -27,7 +28,7 @@ export function TraceDrawer({ steps }: { steps: number }) {
 
       <div className="mt-4 grid grid-cols-[76px_minmax(0,1fr)_100px_184px_104px] gap-x-5 border-b border-line pb-2 font-mono text-[13px] uppercase tracking-[0.06em] text-ink-3">
         <span>Time</span>
-        <span>What Cosmos saw</span>
+        <span>What {model} saw</span>
         <span>Steps seen</span>
         <span>Reading</span>
         <span className="whitespace-nowrap text-right">Obs · check</span>
@@ -52,6 +53,11 @@ export function TraceDrawer({ steps }: { steps: number }) {
       </div>
     </motion.div>
   )
+}
+
+function modelLabel(m?: string) {
+  if (!m || m.includes('cosmos')) return 'Cosmos Reason'
+  return m.replace(/^gemini-/, 'Gemini ').replace(/-flash/, ' Flash')
 }
 
 function Row({ r, steps, fresh }: { r: TraceRow; steps: number; fresh: boolean }) {

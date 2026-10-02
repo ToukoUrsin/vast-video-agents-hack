@@ -1,4 +1,4 @@
-// Reasoning trace: a passive log of every /api/check-step answer (what Cosmos saw, which steps the
+// Reasoning trace: a passive log of every /api/check-step answer (what the vision model saw, which steps the
 // fixed checks counted, latency split). Written by HttpStepChecker on the side; never read by the
 // coach logic, only by the trace drawer and the Score footer.
 import { useSyncExternalStore } from 'react'
@@ -21,6 +21,8 @@ export interface TraceRow {
   /** client round trip, what the status line shows */
   roundTripMs: number
   judge?: string
+  /** which vision model read the frame (Gemini, or Cosmos as fallback) */
+  model?: string
   error?: string
 }
 

@@ -80,6 +80,36 @@ def jpeg_data_url(jpeg: bytes) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()
 
 
+# ---------------------------------------------------------------- live step perception (Gemini)
+# Benchmarked on 61 hand-labelled frames from our takes and live runs (2.10): Gemini 3.6 Flash (minimal
+# thinking, ~1.2 s) read 92% of cup stages and 99% of cap fields right; Cosmos nano 49% and 78%.
+# 3.8 Flash is a little better on cups but ~2 s. Unset key = Cosmos.
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY", "")
+VISION_MODEL = os.environ.get("UNDERSTUDY_VISION_MODEL", "gemini-3.6-flash")
+VISION_THINKING = os.environ.get("UNDERSTUDY_VISION_THINKING", "minimal")  # 3.7+ Flash: "low" at least
+
+
+async def vision(client: httpx.AsyncClient, prompt: str, image: bytes, system: str, timeout: float = 5) -> str:
+    gc = {"temperature": 0, "responseMimeType": "application/json", "maxOutputTokens": 1500,
+          "thinkingConfig": {"thinkingLevel": VISION_THINKING}}
+    r = await client.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{VISION_MODEL}:generateContent",
+        headers={"x-goog-api-key": GEMINI_KEY},
+        json={
+            "systemInstruction": {"parts": [{"text": system}]},
+            "contents": [{"role": "user", "parts": [
+                {"inline_data": {"mime_type": "image/jpeg", "data": base64.b64encode(image).decode()}},
+                {"text": prompt},
+            ]}],
+            "generationConfig": gc,
+        },
+        timeout=timeout,
+    )
+    r.raise_for_status()
+    parts = r.json()["candidates"][0]["content"]["parts"]
+    return "".join(p.get("text", "") for p in parts if not p.get("thought"))
+
+
 async def reason(
     client: httpx.AsyncClient,
     prompt: str,

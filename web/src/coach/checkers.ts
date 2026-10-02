@@ -65,7 +65,7 @@ export class MockTaskRecognizer implements TaskRecognizer {
   }
 }
 
-/** Live checker: our server asks Cosmos Reason about the current step. */
+/** Live checker: our server asks the vision model (Gemini, Cosmos fallback) about the current step. */
 export class HttpStepChecker implements StepChecker {
   private url: string
   constructor(url = '/api/check-step') {
@@ -122,6 +122,7 @@ function trace(step: string, stepIndex: number, t0: number, j: Record<string, un
       serverMs: num(j.latency_ms),
       roundTripMs: performance.now() - t0,
       judge: typeof j.judge === 'string' ? j.judge : undefined,
+      model: typeof j.perception_model === 'string' ? j.perception_model : undefined,
       error: typeof j.error === 'string' ? j.error : undefined,
     })
   } catch {

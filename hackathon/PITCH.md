@@ -24,8 +24,9 @@ Keys: `1`–`4` screens, `Space` next beat, `R` reset coach, `T` force Cap swap 
 
 ## Likely questions
 
-- **How fast is it?** About 1 s per check: Cosmos Reason reads two frames in parallel (~0.6 s), then fixed checks per step decide progress. A step ticks after two agreeing checks; a correction needs two in a row and only fires when hands are off the objects.
+- **How fast is it?** About 1.5 s per check: Gemini 3.6 Flash reads the latest frame as a closed-choice question (which cap is on which bottle, which pyramid stage), then fixed checks per step decide progress. A step ticks after two agreeing checks; a correction needs two in a row (four while hands are still on the objects).
 - **Is the step list learned?** The step list comes from the expert takes; the completion check for each step ("green cap on the Coca-Cola") is written per task. Unknown tasks fall back to an LLM judge (DeepSeek V4 Flash on W&B).
-- **Why not Cosmos alone?** The small reasoning model sees well but is weak at "was a step skipped". Splitting perception (Cosmos) from sequence logic made it reliable.
+- **Why Gemini for the live checks, not Cosmos?** We measured it. On 61 hand-labelled frames from our own takes, the Cosmos nano model read 49% of cup-pyramid stages and 78% of cap states right; Gemini 3.6 Flash read 92% and 99%. Cosmos still recognises which task you are doing, describes the whole archive and builds the map with Cosmos Embed, and it is the automatic fallback if Gemini is unreachable.
+- **Why not one model end to end?** Vision models are weak at "was a step skipped". Splitting perception (a closed-choice reading per frame) from fixed sequence logic made it reliable.
 - **What did VAST do?** Stores the archive and our takes, runs the ingest pipeline, and VastDB holds captions, detections and vectors that drive the map and search.
 - **Limits:** tiny parts assembled inside the hands (the astronaut minifigure) are too occluded for live coaching today; it's in the library, not coached live.

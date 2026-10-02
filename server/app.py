@@ -34,7 +34,7 @@ import upstreams as U
 
 HERE = Path(__file__).resolve().parent
 TASK_INDEX = HERE / "task_index.json"
-LIVE_DIR = Path("/tmp/understudy-live")
+LIVE_DIR = Path(os.environ.get("UNDERSTUDY_LIVE_DIR", "/tmp/understudy-live"))
 SNAPSHOT = U.ROOT / "web" / "src" / "data" / "real-archive.json"
 
 # Tasks the demo performs. Used for zero-shot recognition until our recordings are in the index.
@@ -44,7 +44,7 @@ DEFAULT_TASKS = [
     {"id": "vast-astronaut", "label": "VAST astronaut", "prompt": "a person assembling a small white Lego astronaut minifigure on a round white base plate"},
 ]
 
-# Steps + what Cosmos should look at for each task. Cosmos (vision) reports the scene state,
+# Steps + what the vision model should look at for each task. It reports the scene state,
 # the W&B LLM judges the current step against the ordered steps. Two stages because the
 # small vision model perceives well but is weak at "was a step skipped" sequence logic.
 TASK_DEFS = {
@@ -87,6 +87,20 @@ TASK_DEFS = {
         "observe": 'Look at the clear plastic cups on the floor. Answer with counts you can actually see. '
         'Reply ONLY JSON: {"cups_standing_on_floor": 0, "cups_resting_on_other_cups": 0, '
         '"all_cups_nested_in_one_stack": true|false, "hands_touching_cups": true|false}',
+        # closed-choice stage question for the stronger vision model (counts were the weak point)
+        "observe_vision": 'A person is building a cup pyramid from clear plastic cups placed upside down on the floor: '
+        'a bottom row of 3, then 2 on top, then 1 on top, then everything nested back into one stack. '
+        'Ignore spare cups that are still nested together off to the side or held in the hands. '
+        'Which ONE stage does the build on the floor show right now?\n'
+        'row_incomplete: fewer than 3 cups in the bottom row, nothing on top\n'
+        'row_of_3: exactly 3 cups side by side in the bottom row, at most 1 cup on top of them\n'
+        'two_on_top: 3-cup bottom row with 2 cups resting on top, no cup on the very top\n'
+        'full_pyramid: complete 3-2-1 pyramid\n'
+        'nested_stack: no pyramid, all cups nested into one stack\n'
+        'wrong_build: a cup placed on top of a bottom row with fewer than 3 cups, more than 3 cups in the bottom row, '
+        'or cups stacked straight up into a tower\n'
+        'no_cups_visible: the floor with the cups is not in view\n'
+        'Reply ONLY JSON: {"stage": "<one of the ids above>", "hands_touching_cups": true|false}',
     },
     "vast-astronaut": {
         "label": "VAST astronaut",
@@ -164,7 +178,19 @@ def _int(v) -> int:
         return 0
 
 
+CUP_STAGE_STEPS = {"row_of_3": {1}, "two_on_top": {1, 2}, "full_pyramid": {1, 2, 3}}
+
+
 def check_cup_pyramid(o: dict, cur: int, mem: dict | None = None) -> tuple[set[int], str]:
+    stage = _norm(o.get("stage"))
+    if stage:  # closed-choice reading from the vision model
+        vis = set(CUP_STAGE_STEPS.get(stage, set()))
+        if stage == "nested_stack" and cur >= 3:
+            vis.add(4)
+        issue = ""
+        if stage == "wrong_build" and cur <= 2:
+            issue = "Three cups side by side on the floor first, then two on top, then one."
+        return vis, issue
     # Cosmos counts "on the floor" vs "resting on other cups" far better than rows (the top cup is often
     # at the frame edge with this low camera): 3/0 = row, 3/2 = second level, 3/3 = full 3-2-1 pyramid.
     floor, up = _int(o.get("cups_standing_on_floor")), _int(o.get("cups_resting_on_other_cups"))
@@ -413,10 +439,21 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes], session
     d = TASK_DEFS[task_id]
     t0 = time.perf_counter()
     sysmsg = "You are a precise vision sensor. Output only one JSON object, no prose."
-    use = frames[-2:]
-    raws = await asyncio.gather(*[U.reason(http, d["observe"], [f], max_tokens=160, system=sysmsg) for f in use])
-    parsed = [U.parse_json(r) for r in raws]
-    dicts = [x for x in parsed if isinstance(x, dict)]
+    perceiver, vision_error = U.REASON_MODEL, ""
+    dicts: list[dict] = []
+    if U.GEMINI_KEY and frames:
+        # one closed-choice reading of the latest frame; the UI's two-reading streak does the smoothing
+        try:
+            raws = [await U.vision(http, d.get("observe_vision", d["observe"]), frames[-1], sysmsg)]
+            dicts = [x for x in [U.parse_json(raws[0])] if isinstance(x, dict)]
+            perceiver = U.VISION_MODEL
+        except Exception as e:  # Gemini down or out of credit: fall back to Cosmos for this check
+            vision_error = f"{type(e).__name__}: {e}"[:160]
+            print("vision failed, using Cosmos:", vision_error)
+    if perceiver == U.REASON_MODEL:
+        use = frames[-2:]
+        raws = await asyncio.gather(*[U.reason(http, d["observe"], [f], max_tokens=160, system=sysmsg) for f in use])
+        dicts = [x for x in (U.parse_json(r) for r in raws) if isinstance(x, dict)]
     if len(dicts) >= 2:
         # keep only what both frames agree on; disagreement = unclear (never triggers a correction)
         a, b = dicts[-2], dicts[-1]
@@ -485,6 +522,8 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes], session
         "advance_to": advance,
         "completed_steps": sorted(visible),
         "observation": obs if obs is not None else obs_text,
+        "perception_model": perceiver,
+        **({"vision_error": vision_error} if vision_error else {}),
         "judge": judge,
         "observe_ms": int((t1 - t0) * 1000),
         "judge_ms": int((t2 - t1) * 1000),
@@ -509,7 +548,7 @@ async def check_step(req: Request):
     try:
         if d and cur is not None:
             res = await observe_and_judge(tid, cur, frames, str(data.get("session") or ""))
-            res["method"] = "cosmos-observe+llm-judge"
+            res["method"] = f"{res.get('perception_model', 'cosmos')}-observe+step-checks"
         else:  # unknown task/step text: single-pass Cosmos judgement
             res = await cosmos_check_step(task, step, frames, data.get("prev_step"), data.get("next_step"))
             res["method"] = "cosmos-single-pass"
@@ -526,7 +565,7 @@ async def check_step(req: Request):
             fh.write(json.dumps({"t": stamp, "task": task, "step": step, "ms": ms, **out}, default=str) + "\n")
     except Exception as e:
         print("live log failed:", e)
-    out.update({"done": res["state"] == "done", "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL, "judge_model": JUDGE_MODEL})
+    out.update({"done": res["state"] == "done", "latency_ms": ms, "latencyMs": ms, "model": out.get("perception_model", U.REASON_MODEL), "judge_model": JUDGE_MODEL})
     return out
 
 

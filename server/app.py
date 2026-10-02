@@ -891,7 +891,7 @@ async def search(req: Request):
     top_k = max(1, min(int(data.get("top_k") or 8), 24))
     key = (q.lower(), top_k)
     hit = _SEARCH_CACHE.get(key)
-    if hit and time.time() - hit[0] < 1800:  # VSS writes an LLM summary per search (~20 s under load)
+    if hit and time.time() - hit[0] < 21600:  # VSS writes an LLM summary per search (~20 s under load)
         return {**hit[1], "cached": True, "latency_ms": int((time.perf_counter() - t0) * 1000)}
     try:
         r = await _vss_req(

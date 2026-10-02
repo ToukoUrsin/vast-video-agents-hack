@@ -1,0 +1,24 @@
+[project]
+name = "understudy-server"
+version = "0.1.0"
+description = "Understudy backend: VSS/Cosmos/W&B proxy and map builder"
+authors = [
+    { name = "Touko Ursin", email = "touko.ursin@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.142.2",
+    "httpx[socks]>=0.28.1",
+    "numpy>=2.5.3",
+    "openai>=3.24.0",
+    "pillow>=12.3.0",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "scikit-learn>=1.9.1",
+    "umap-learn>=0.5.12",
+    "uvicorn[standard]>=0.54.0",
+    "weave>=0.53.11",
+]
+
+[tool.uv]
+package = false

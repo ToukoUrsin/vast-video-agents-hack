@@ -35,24 +35,93 @@ if (typeof window !== 'undefined' && window.speechSynthesis) {
   voice = pickVoice()
 }
 
-export function speak(text: string) {
+// Pre-rendered coach voice (ElevenLabs, server/render_voice.py): every fixed line the coach can
+// say has an mp3 in /voice, keyed by its exact text. Decoded up front into Web Audio buffers so
+// playback starts instantly; anything not in the manifest falls back to speechSynthesis.
+let audio: AudioContext | null = null
+const ctx = () => (audio ??= new AudioContext())
+const voiceBuffers = new Map<string, AudioBuffer>()
+let voiceNode: AudioBufferSourceNode | null = null
+
+async function loadVoice() {
+  try {
+    const res = await fetch('/voice/manifest.json')
+    if (!res.ok) return
+    const { lines } = (await res.json()) as { lines: Record<string, string> }
+    await Promise.all(
+      Object.entries(lines).map(async ([text, url]) => {
+        const buf = await (await fetch(url)).arrayBuffer()
+        voiceBuffers.set(text, await ctx().decodeAudioData(buf))
+      }),
+    )
+  } catch {
+    // no pre-rendered voice: speechSynthesis only
+  }
+}
+
+if (typeof window !== 'undefined') {
+  loadVoice()
+  // autoplay: the first key press / click (presenter switching screens) unlocks audio for the session
+  const unlock = () => {
+    ctx()
+      .resume()
+      .then(() => {
+        if (audio?.state !== 'running') return
+        window.removeEventListener('keydown', unlock, true)
+        window.removeEventListener('pointerdown', unlock, true)
+      })
+      .catch(() => {})
+  }
+  window.addEventListener('keydown', unlock, true)
+  window.addEventListener('pointerdown', unlock, true)
+}
+
+function playBuffer(buf: AudioBuffer) {
+  const c = ctx()
+  const src = c.createBufferSource()
+  src.buffer = buf
+  src.connect(c.destination)
+  src.start()
+  voiceNode = src
+  ;(window as unknown as { __voicePlayed?: string[] }).__voicePlayed?.push('file')
+}
+
+function speakSynth(text: string) {
   const synth = window.speechSynthesis
   if (!synth) return
-  synth.cancel()
   const u = new SpeechSynthesisUtterance(text)
   if (voice) u.voice = voice
   u.rate = 1.02
   u.pitch = 1
   synth.speak(u)
+  ;(window as unknown as { __voicePlayed?: string[] }).__voicePlayed?.push('synth')
 }
 
-export const stopSpeaking = () => window.speechSynthesis?.cancel()
+export function speak(text: string) {
+  stopSpeaking()
+  const buf = voiceBuffers.get(text)
+  if (!buf) return speakSynth(text)
+  const c = ctx()
+  if (c.state === 'running') return playBuffer(buf)
+  c.resume()
+    .then(() => (c.state === 'running' ? playBuffer(buf) : speakSynth(text)))
+    .catch(() => speakSynth(text))
+}
 
-let audio: AudioContext | null = null
+export const stopSpeaking = () => {
+  try {
+    voiceNode?.stop()
+  } catch {
+    // already ended
+  }
+  voiceNode = null
+  window.speechSynthesis?.cancel()
+}
+
 /** Soft two-note chime for a completed step; low single note for a mistake. */
 export function chime(kind: 'good' | 'error') {
-  audio ??= new AudioContext()
-  const now = audio.currentTime
+  ctx()
+  const now = audio!.currentTime
   const notes = kind === 'good' ? [880, 1318.5] : [220]
   notes.forEach((f, i) => {
     const o = audio!.createOscillator()

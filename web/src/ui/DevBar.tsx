@@ -2,8 +2,8 @@ import { useApp } from '../app/context'
 
 const ACTIONS: Record<number, Array<[string, string]>> = {
   1: [[' ', 'Space · start ingest'], ['r', 'R · reset']],
-  2: [[' ', 'Space · cluster'], ['escape', 'Esc · close panel'], ['r', 'R · regrid']],
-  3: [[' ', 'Space · start'], ['t', 'T · pick main task'], ['n', 'N · done (mock)'], ['m', 'M · mistake (mock)'], ['r', 'R · reset']],
+  2: [[' ', 'Space · cluster'], ['/', '/ · search'], ['escape', 'Esc · close panel'], ['r', 'R · regrid']],
+  3: [[' ', 'Space · start'], ['t', 'T · pick main task'], ['n', 'N · done (mock)'], ['m', 'M · mistake (mock)'], ['d', 'D · trace'], ['r', 'R · reset']],
   4: [[' ', 'Space · replay']],
 }
 

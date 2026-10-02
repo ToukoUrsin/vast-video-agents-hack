@@ -10,6 +10,8 @@ import type { CoachState } from '../coach/machine'
 import { expertClipFor, fmt } from '../coach/scoring'
 import { chime } from '../coach/media'
 import { ExpertClip } from '../ui/ExpertClip'
+import { TraceDrawer } from '../ui/TraceDrawer'
+import { clearTrace } from '../coach/trace'
 
 const params = new URLSearchParams(location.search)
 const VIDEO = { x: 96, y: 152, w: 1184, h: 666 }
@@ -34,6 +36,11 @@ export function Coach() {
     requiredDone: rehearsal ? 1 : 2,
   })
   const [forced, setForced] = useState(false)
+  const [traceOpen, setTraceOpen] = useState(false)
+  // the trace covers one session: cleared whenever the coach is back to idle (mount, R)
+  useEffect(() => {
+    if (state.phase === 'idle') clearTrace()
+  }, [state.phase])
   const [now, setNow] = useState(performance.now())
 
   useEffect(() => {
@@ -80,6 +87,7 @@ export function Coach() {
         forceTask(task)
       }
     },
+    d: () => setTraceOpen((o) => !o),
     n: () => mock.push('done'),
     m: () => mock.push('mistake'),
   })
@@ -153,6 +161,8 @@ export function Coach() {
       </div>
 
       <Rail state={state} shownIndex={shownIndex} elapsed={elapsed} rehearsal={rehearsal} forced={forced} />
+
+      <AnimatePresence>{traceOpen && <TraceDrawer key="trace" steps={(state.task ?? task).steps.length} />}</AnimatePresence>
 
     </div>
   )

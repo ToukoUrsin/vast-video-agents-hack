@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useApp, useKeys } from '../app/context'
 import { getCluster, tasks } from '../data'
-import { MockStepChecker, MockTaskRecognizer } from '../coach/checkers'
+import { HttpStepChecker, MockStepChecker, MockTaskRecognizer } from '../coach/checkers'
 import { useCamera, useCoach, type CameraState } from '../coach/useCoach'
 import type { CoachState } from '../coach/machine'
 import { expertClipFor, fmt } from '../coach/scoring'
@@ -16,7 +16,9 @@ export function Coach() {
   const { videoRef, camera, retry } = useCamera()
   const task = getCluster(params.get('task') ?? 'packing-box') ?? tasks()[0]
   // Rehearsal adapters. Swap for HttpStepChecker / an embed-based recognizer when the server is up.
-  const checker = useMemo(() => new MockStepChecker(), [])
+  const mock = useMemo(() => new MockStepChecker(), [])
+  const checker = useMemo(() => (params.get('checker') === 'http' ? new HttpStepChecker() : mock), [mock])
+  const rehearsal = checker === mock
   const recognizer = useMemo(() => new MockTaskRecognizer(task, 2000), [task])
   const { state, start, reset } = useCoach({ video: videoRef, checker, recognizer, voice: !params.has('mute') })
   const [now, setNow] = useState(performance.now())
@@ -34,11 +36,11 @@ export function Coach() {
   useKeys({
     ' ': () => state.phase === 'idle' && start(),
     r: () => {
-      checker.clear()
+      mock.clear()
       reset()
     },
-    n: () => checker.push('done'),
-    m: () => checker.push('mistake'),
+    n: () => mock.push('done'),
+    m: () => mock.push('mistake'),
   })
 
   const elapsed = state.phase === 'idle' ? 0 : (now - state.startedAt) / 1000
@@ -109,7 +111,7 @@ export function Coach() {
         </AnimatePresence>
       </div>
 
-      <Rail state={state} elapsed={elapsed} />
+      <Rail state={state} elapsed={elapsed} rehearsal={rehearsal} />
 
     </div>
   )
@@ -191,7 +193,7 @@ function CorrectionCard({ state }: { state: CoachState }) {
   )
 }
 
-function Rail({ state, elapsed }: { state: CoachState; elapsed: number }) {
+function Rail({ state, elapsed, rehearsal }: { state: CoachState; elapsed: number; rehearsal: boolean }) {
   const task = state.task
   const latency = state.lastLatencyMs != null ? `${(state.lastLatencyMs / 1000).toFixed(1)} s` : null
   let status: { dot: string; text: string }
@@ -267,6 +269,7 @@ function Rail({ state, elapsed }: { state: CoachState; elapsed: number }) {
           <span className={`relative h-2.5 w-2.5 rounded-full ${status.dot}`} />
         </span>
         <span className="tnum font-mono text-[18px] text-ink-2">{status.text}</span>
+        {rehearsal && <span className="ml-auto font-mono text-[15px] text-ink-3">rehearsal checker</span>}
       </div>
     </div>
   )

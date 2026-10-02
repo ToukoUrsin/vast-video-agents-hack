@@ -21,10 +21,10 @@ export function gridLayout(order: Clip[], area: Rect, cols: number, gap: number)
 }
 
 /** Grid that fits n tiles into area as large as possible, centred. */
-export function fitGrid(order: Clip[], area: Rect, gap: number) {
+export function fitGrid(order: Clip[], area: Rect, gap: number, fixedCols?: number) {
   const n = order.length
   let best = { cols: 1, w: 0 }
-  for (let cols = 8; cols < 60; cols++) {
+  for (let cols = fixedCols ?? 8; cols < (fixedCols ? fixedCols + 1 : 60); cols++) {
     const rows = Math.ceil(n / cols)
     const w = Math.min((area.w - gap * (cols - 1)) / cols, ((area.h - gap * (rows - 1)) / rows) * (16 / 9))
     if (w > best.w) best = { cols, w }

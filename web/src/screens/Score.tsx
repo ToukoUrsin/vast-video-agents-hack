@@ -33,7 +33,7 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
   return (
     <div className="absolute inset-0">
       {/* left */}
-      <div className="absolute left-24 top-[152px] w-[680px]">
+      <div className="absolute left-24 top-[184px] w-[680px]">
         <p className="font-mono text-[18px] text-ink-2">
           Score · {result.task.label}
           {isDemo && <span className="text-ink-3"> · sample session</span>}
@@ -66,7 +66,7 @@ function ScoreCard({ result, isDemo }: { result: SessionResult; isDemo: boolean 
       </div>
 
       {/* right */}
-      <div className="absolute left-[880px] right-24 top-[152px]">
+      <div className="absolute left-[880px] right-24 top-[184px]">
         <p className="font-mono text-[17px] text-ink-2">Steps</p>
         <div className="mt-3">
           {result.steps.map((r, i) => {

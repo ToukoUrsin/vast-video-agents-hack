@@ -146,7 +146,7 @@ function SourceCard({ title, count, unit, sub, children }: { title: string; coun
 
 function Row({ clip, label, value, unit }: { clip?: Clip; label: string; value: number; unit?: string }) {
   return (
-    <div className="flex h-[42px] items-center gap-4 border-t border-line">
+    <div className="flex h-[38px] items-center gap-4 border-t border-line">
       <Thumb clip={clip} size="sm" className="h-[27px] w-[48px] shrink-0 rounded-[4px]" />
       <span className="flex-1 text-[20px] text-ink">{label}</span>
       <span className="tnum font-mono text-[20px] text-ink-2">

@@ -6,15 +6,17 @@ import type { Clip, Cluster } from '../data/types'
 import type { Camera, Rect } from '../lib/field'
 import { clusterLayout, fitGrid, type MapLayout } from '../lib/layouts'
 import { HoverCard } from '../ui/HoverCard'
+import { GRID_COLS } from './Library'
 import { ExpertClip } from '../ui/ExpertClip'
 
 const AREA: Rect = { x: 96, y: 176, w: 1728, h: 800 }
-const GRID_AREA: Rect = { x: 96, y: 200, w: 1728, h: 760 }
+const GRID_AREA: Rect = { x: 96, y: 196, w: 1728, h: 780 }
 const STAGGER = 260
 const DUR = 1250
 const PANEL_X = 1232
 
-const gridTargets = fitGrid(ingestOrder, GRID_AREA, 6)
+// same column count as the Library grid so the hand-off is a clean scale-up
+const gridTargets = fitGrid(ingestOrder, GRID_AREA, 6, GRID_COLS)
 
 export function MapScreen() {
   const { field, mapPhase, setMapPhase } = useApp()
@@ -40,7 +42,7 @@ export function MapScreen() {
     field.onHover = (clip, rect) => setHover(clip && rect ? { clip, rect } : null)
     if (mapPhase === 'grid') {
       const t = new Map()
-      ingestOrder.forEach((c, i) => t.set(c.clip_id, { ...gridTargets.get(c.clip_id)!, alpha: 1, dur: 900, delay: (i % 30) * 6 }))
+      ingestOrder.forEach((c, i) => t.set(c.clip_id, { ...gridTargets.get(c.clip_id)!, alpha: 1, dur: 900, delay: Math.floor(i / GRID_COLS) * 10 }))
       field.setTargets(t)
     } else {
       field.setTargets(staticLayout.targets)

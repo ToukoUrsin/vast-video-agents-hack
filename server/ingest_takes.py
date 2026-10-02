@@ -76,16 +76,44 @@ async def caption(c: httpx.AsyncClient, small: Path, label: str) -> tuple[str, i
     return text, int(j.get("usage", {}).get("total_tokens", 0))
 
 
+def max_per_frame(det: dict) -> dict:
+    """Archive rows store object_counts as the max count of each class in any single frame
+    (object_counts_mode=max_per_frame); the YOLO server returns totals over all frames."""
+    pj = det.get("perception_json") if isinstance(det.get("perception_json"), dict) else {}
+    frames = pj.get("frames") or det.get("frames") or []
+    if not frames:
+        return det
+    counts: dict[str, int] = {}
+    total, conf = 0, 0.0
+    for f in frames:
+        per: dict[str, int] = {}
+        for d in f.get("detections") or []:
+            per[d["label"]] = per.get(d["label"], 0) + 1
+            total += 1
+            conf = max(conf, float(d.get("confidence") or 0))
+        for k, v in per.items():
+            counts[k] = max(counts.get(k, 0), v)
+    return {
+        "perception_ok": True,
+        "object_classes": sorted(counts),
+        "object_counts": counts,
+        "object_counts_mode": "max_per_frame",
+        "max_detection_conf": round(conf, 4),
+        "frame_count": len(frames),
+        "detection_count": total,
+    }
+
+
 async def yolo(c: httpx.AsyncClient, seg: Path, name: str) -> dict:
     try:
         r = await c.post(
             YOLO_URL,
             headers={"Authorization": f"Bearer {U.GPU_TOKEN}"},
-            json={"video_base64": b64(seg), "filename": name, "include_frames": False},
+            json={"video_base64": b64(seg), "filename": name, "include_frames": True},
             timeout=120,
         )
         r.raise_for_status()
-        return r.json()
+        return max_per_frame(r.json())
     except Exception as e:
         print("  yolo failed:", e, file=sys.stderr)
         return {}

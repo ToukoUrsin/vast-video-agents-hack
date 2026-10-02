@@ -105,11 +105,38 @@ def insert(path):
     return {"inserted": len(new), "before": len(existing), "after": after}
 
 
+PERCEPTION_COLS = ["perception_json", "object_classes", "object_counts", "max_detection_conf", "perception_ok",
+                   "detection_count", "detection_frame_count"]
+
+
+def update_perception(path):
+    """Rewrite only the YOLO perception fields of OUR rows (location == understudy, pk in rows.json)."""
+    rows = {r["pk"]: r for r in json.load(open(path))}
+    s = vastdb.connect(endpoint=norm(env.get("VDB_ENDPOINT") or env["S3_ENDPOINT"]), access=env["ACCESS_KEY"],
+                       secret=env["SECRET_KEY"], ssl_verify=False)  # fmt: skip
+    with s.transaction() as tx:
+        t = tx.bucket(env["VASTDB_BUCKET"]).schema(env.get("VDB_SCHEMA", "vss-schema")).table(env.get("VDB_COLLECTION", "vss-collection"))
+        schema = {f.name: f.type for f in t.columns()}
+        cur = t.select(columns=["pk", "location"], predicate=(t["location"] == "understudy"), internal_row_id=True).read_all()
+        ids = [(rid, pk) for rid, pk, loc in zip(cur.column("$row_id").to_pylist(), cur.column("pk").to_pylist(),
+                                                  cur.column("location").to_pylist()) if loc == "understudy" and pk in rows]  # fmt: skip
+        if not ids:
+            return {"updated": 0}
+        cols = {"$row_id": pa.array([i for i, _ in ids], type=pa.uint64())}
+        for c in PERCEPTION_COLS:
+            cols[c] = pa.array([rows[pk][c] for _, pk in ids], type=schema[c])
+        t.update(rows=pa.table(cols))
+    log(f"updated perception on {len(ids)} understudy rows")
+    return {"updated": len(ids)}
+
+
 if __name__ == "__main__":
     cmd, args = sys.argv[1], sys.argv[2:]
     if cmd == "resolve":
         print(json.dumps(resolve(args)))
     elif cmd == "upload":
         print(json.dumps(upload(args)))
+    elif cmd == "update-perception":
+        print(json.dumps(update_perception(args[0])))
     elif cmd == "insert":
         print(json.dumps(insert(args[0])))

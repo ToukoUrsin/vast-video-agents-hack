@@ -37,35 +37,36 @@ SNAPSHOT = U.ROOT / "web" / "src" / "data" / "real-archive.json"
 
 # Tasks the demo performs. Used for zero-shot recognition until our recordings are in the index.
 DEFAULT_TASKS = [
-    {"id": "lego-tower", "label": "Lego assembly", "prompt": "a person stacking red, blue and yellow Lego bricks into a small tower on a green base plate on a table"},
-    {"id": "cup-pyramid", "label": "Cup pyramid", "prompt": "a person stacking plastic cups upside down into a pyramid on a table, then taking it down into one stack"},
-    {"id": "pour-drink", "label": "Pour a drink", "prompt": "a person pouring a drink from a bottle into a cup on a table and closing the bottle cap"},
+    {"id": "cap-swap", "label": "Cap swap", "prompt": "a person with a green Mountain Dew bottle and a Coca-Cola bottle on the floor, taking the caps off and swapping the bottles"},
+    {"id": "cup-pyramid", "label": "Cup pyramid", "prompt": "a person stacking clear plastic cups upside down into a pyramid on the floor, then nesting them into one stack"},
+    {"id": "vast-astronaut", "label": "VAST astronaut", "prompt": "a person assembling a small white Lego astronaut minifigure on a round white base plate"},
 ]
 
 # Steps + what Cosmos should look at for each task. Cosmos (vision) reports the scene state,
 # the W&B LLM judges the current step against the ordered steps. Two stages because the
 # small vision model perceives well but is weak at "was a step skipped" sequence logic.
 TASK_DEFS = {
-    "lego-tower": {
-        "label": "Lego assembly",
+    "cap-swap": {
+        "label": "Cap swap",
         "done_when": [
-            "a base plate is on the table",
-            "the bottom brick on the plate is red",
-            "the second brick, directly on the red one, is blue",
-            "the third brick, on top of the blue one, is yellow",
-            "the finished tower is on the right side of the table",
+            "the Mountain Dew bottle has no cap on (its green cap is off)",
+            "the Coca-Cola bottle has no cap on (its black cap is off)",
+            "the bottles have swapped places: the Coca-Cola is now on the left",
+            "the green cap is screwed onto the Coca-Cola",
+            "the black cap is screwed onto the Mountain Dew",
         ],
         "steps": [
-            "Place the base plate flat on the table",
-            "Put a red brick on it",
-            "Put a blue brick on the red one",
-            "Put a yellow brick on top",
-            "Push the finished tower to the right side",
+            "Take the green cap off the Mountain Dew",
+            "Take the black cap off the Coca-Cola",
+            "Swap the two bottles' places",
+            "Put the green cap on the Coca-Cola",
+            "Put the black cap on the Mountain Dew",
         ],
-        "observe": 'Look at the most recent frame. Describe the Lego on the table. Count whole bricks only, '
-        'ignore studs, highlights and loose bricks lying beside the tower. Reply ONLY JSON: '
-        '{"base_plate_on_table": true|false, "bricks_stacked_bottom_to_top": ["red"|"blue"|"yellow"|"other", ...], '
-        '"tower_position": "left"|"center"|"right"|"none"}',
+        "unordered": [4, 5],  # the two caps can go back on in either order
+        "observe": 'Look at the most recent frame: a green Mountain Dew bottle and a Coca-Cola bottle with a red '
+        'label on the floor. Reply ONLY JSON: {"left_bottle": "mountain dew"|"coca-cola", '
+        '"mountain_dew_cap": "green cap on"|"black cap on"|"off", "coca_cola_cap": "black cap on"|"green cap on"|"off", '
+        '"loose_caps_on_floor": ["green"|"black", ...], "hands_touching_bottles": true|false}',
     },
     "cup-pyramid": {
         "label": "Cup pyramid",
@@ -81,32 +82,113 @@ TASK_DEFS = {
             "Put 1 cup on top",
             "Take the pyramid down into one stack",
         ],
-        "observe": 'Look at the most recent frame. Describe the plastic cups on the table. Reply ONLY JSON: '
-        '{"bottom_row_cups": 0, "second_row_cups": 0, "top_row_cups": 0, '
-        '"all_cups_in_one_nested_stack": true|false, "cups_upside_down": true|false}',
+        "observe": 'Look at the most recent frame. Describe the clear plastic cups on the floor; count carefully, they '
+        'are transparent. Reply ONLY JSON: {"bottom_row_cups": 0, "second_row_cups": 0, "top_row_cups": 0, '
+        '"all_cups_in_one_nested_stack": true|false}',
     },
-    "pour-drink": {
-        "label": "Pour a drink",
+    "vast-astronaut": {
+        "label": "VAST astronaut",
         "done_when": [
-            "a cup is on the table",
-            "the bottle cap is off (or drink is already in the cup)",
-            "the cup is about half full",
-            "the bottle cap is back on AND the cup has drink in it",
-            "the cup has been moved to the front",
+            "a round white base plate is on the floor",
+            "white minifigure legs stand on the base plate",
+            "a white torso with VAST on the chest sits on the legs",
+            "a head with a white helmet is on the torso",
+            "the navy staff or flag is in the figure's hand",
         ],
         "steps": [
-            "Put a cup on the table",
-            "Open the bottle",
-            "Pour until the cup is about half full",
-            "Close the bottle cap",
-            "Move the cup forward",
+            "Put the round base plate down",
+            "Put the legs on the base",
+            "Put the torso on the legs",
+            "Put the head and helmet on",
+            "Put the staff in its hand",
         ],
-        "observe": 'Look at the most recent frame. Describe the cup and bottle. Reply ONLY JSON: '
-        '{"cup_on_table": true|false, "bottle_cap": "on"|"off"|"unclear", '
-        '"cup_fill": "empty"|"a little"|"about half"|"full", "person_pouring_now": true|false, '
-        '"cup_position": "back"|"middle"|"front"}',
+        "observe": 'Look closely at the small white Lego minifigure build on the floor. If hands hide it, say so. '
+        'Reply ONLY JSON: {"hidden_by_hands": true|false, "base_plate_down": true|false, "legs_on_base": true|false, '
+        '"torso_on_legs": true|false, "head_or_helmet_on": true|false, "staff_in_hand": true|false}',
     },
 }
+
+
+def _norm(v) -> str:
+    return str(v or "").strip().lower()
+
+
+def check_cap_swap(o: dict, cur: int) -> tuple[set[int], str]:
+    dew, coke, left = _norm(o.get("mountain_dew_cap")), _norm(o.get("coca_cola_cap")), _norm(o.get("left_bottle"))
+    loose = [_norm(c) for c in (o.get("loose_caps_on_floor") or []) if isinstance(c, str)]
+    # a cap lying on the floor cannot also be on a bottle: trust the floor reading
+    if "black" in loose:
+        dew = "off" if dew == "black cap on" else dew
+        coke = "off" if coke == "black cap on" else coke
+    if "green" in loose:
+        dew = "off" if dew == "green cap on" else dew
+        coke = "off" if coke == "green cap on" else coke
+    if dew == coke and dew.endswith("cap on"):
+        dew = coke = "unclear"  # the same cap cannot be on both bottles
+    hands = o.get("hands_touching_bottles") in (True, "true")
+    vis = set()
+    if dew != "green cap on":
+        vis.add(1)
+    if coke != "black cap on":
+        vis.add(2)
+    if "coca" in left:
+        vis.add(3)
+    if coke == "green cap on":
+        vis |= {1, 4}
+    if dew == "black cap on":
+        vis |= {2, 5}
+    issue = ""
+    if hands:  # mid-action readings are noisy; correct only once the person lets go
+        return vis, ""
+    if cur >= 3 and dew == "green cap on" and "coca" in left:
+        issue = "That green cap goes on the Coca-Cola, not the Mountain Dew."
+    elif cur >= 3 and coke == "black cap on" and "coca" in left:
+        issue = "The black cap goes on the Mountain Dew, not the Coca-Cola."
+    elif cur == 2 and (4 in vis or 5 in vis) and 3 not in vis:
+        issue = "Swap the two bottles before you put the caps back."
+    return vis, issue
+
+
+def _int(v) -> int:
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return 0
+
+
+def check_cup_pyramid(o: dict, cur: int) -> tuple[set[int], str]:
+    b, m, t = _int(o.get("bottom_row_cups")), _int(o.get("second_row_cups")), _int(o.get("top_row_cups"))
+    nested = o.get("all_cups_in_one_nested_stack") in (True, "true")
+    vis = set()
+    if b >= 3:
+        vis.add(1)
+    if b >= 3 and m >= 2:
+        vis |= {1, 2}
+    if m >= 2 and t >= 1:
+        vis |= {1, 2, 3}
+    if nested and cur >= 3:
+        vis.add(4)
+    issue = ""
+    if cur <= 1 and b == 2 and m >= 1:
+        issue = "The bottom row needs 3 cups before you build on it."
+    return vis, issue
+
+
+def check_vast_astronaut(o: dict, cur: int) -> tuple[set[int], str]:
+    if o.get("hidden_by_hands") in (True, "true"):
+        return set(), ""
+    keys = ["base_plate_down", "legs_on_base", "torso_on_legs", "head_or_helmet_on", "staff_in_hand"]
+    vis = set()
+    for i, k in enumerate(keys):
+        if o.get(k) in (True, "true"):
+            vis |= set(range(1, i + 2))  # a part on top means the parts under it are there
+    issue = ""
+    if o.get("head_or_helmet_on") in (True, "true") and o.get("torso_on_legs") not in (True, "true"):
+        issue = "The torso goes on before the head."
+    return vis, issue
+
+
+TASK_CHECKS = {"cap-swap": check_cap_swap, "cup-pyramid": check_cup_pyramid, "vast-astronaut": check_vast_astronaut}
 
 
 def task_def(task: str) -> tuple[str, dict] | tuple[None, None]:
@@ -318,32 +400,59 @@ def _judge_sync(prompt: str) -> str:
 async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict:
     d = TASK_DEFS[task_id]
     t0 = time.perf_counter()
-    raw_obs = await U.reason(http, d["observe"], frames[-1:], max_tokens=160,
-                             system="You are a precise vision sensor. Output only one JSON object, no prose.")
-    obs = U.parse_json(raw_obs)
+    sysmsg = "You are a precise vision sensor. Output only one JSON object, no prose."
+    use = frames[-2:]
+    raws = await asyncio.gather(*[U.reason(http, d["observe"], [f], max_tokens=160, system=sysmsg) for f in use])
+    parsed = [U.parse_json(r) for r in raws]
+    dicts = [x for x in parsed if isinstance(x, dict)]
+    if len(dicts) >= 2:
+        # keep only what both frames agree on; disagreement = unclear (never triggers a correction)
+        a, b = dicts[-2], dicts[-1]
+        obs = {}
+        for k in set(a) | set(b):
+            va, vb = a.get(k), b.get(k)
+            if isinstance(va, list) and isinstance(vb, list):
+                obs[k] = [x for x in va if x in vb]
+            else:
+                obs[k] = va if va == vb else "unclear"
+    else:
+        obs = dicts[-1] if dicts else None
+    raw_obs = raws[-1]
     obs_text = json.dumps(obs) if obs is not None else raw_obs.strip()[:300]
     t1 = time.perf_counter()
-    raw = await asyncio.to_thread(_judge_sync, judge_prompt(d["label"], d["steps"], cur, obs_text, d.get("done_when")))
+    fn = TASK_CHECKS.get(task_id)
+    if fn and isinstance(obs, dict):
+        # fixed completion checks per step over Cosmos's structured scene report
+        visible, wrong = fn(obs, cur)
+        judge = "step-checks"
+    else:
+        raw = await asyncio.to_thread(_judge_sync, judge_prompt(d["label"], d["steps"], cur, obs_text, d.get("done_when")))
+        p = U.parse_json(raw)
+        p = p if isinstance(p, dict) else {}
+        try:
+            visible = {int(x) for x in (p.get("completed") or []) if 1 <= int(x) <= len(d["steps"])}
+        except (TypeError, ValueError):
+            visible = set()
+        wrong = str(p.get("wrong") or "").strip()
+        if wrong.lower() in ("none", "n/a", "null", "-", "no"):
+            wrong = ""
+        judge = JUDGE_MODEL
     t2 = time.perf_counter()
-    p = U.parse_json(raw)
-    p = p if isinstance(p, dict) else {}
-    try:
-        visible = {int(x) for x in (p.get("completed") or []) if 1 <= int(x) <= len(d["steps"])}
-    except (TypeError, ValueError):
-        visible = set()
-    wrong = str(p.get("wrong") or "").strip()
-    if wrong.lower() in ("none", "n/a", "null", "-", "no"):
-        wrong = ""
     # deterministic sequence logic on top of the LLM's per-step reading (1-based step numbers)
-    if visible and 1 not in visible:
+    if visible and 1 not in visible and judge != "step-checks":
         visible.add(1)  # step 1 is setup: later work visible means it happened (vision often misses flat plates)
+    group = set(d.get("unordered") or [])
     advance = cur
     while (advance + 1) in visible:
         advance += 1
+    hands_busy = isinstance(obs, dict) and any(
+        "hands" in k and v in (True, "true") for k, v in obs.items()
+    )
+    skipped = [v for v in visible if v > cur + 1 and not ({v, cur + 1} <= group)]
     issue = ""
     if advance > cur:
         state = "done"
-    elif any(v > cur + 1 for v in visible):
+    elif skipped and not hands_busy:
         state = "mistake"
         issue = f"You skipped a step. {d['steps'][cur]} first."
         if wrong:
@@ -358,6 +467,7 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
         "advance_to": advance,
         "completed_steps": sorted(visible),
         "observation": obs if obs is not None else obs_text,
+        "judge": judge,
         "observe_ms": int((t1 - t0) * 1000),
         "judge_ms": int((t2 - t1) * 1000),
     }
@@ -370,7 +480,7 @@ async def check_step(req: Request):
     step, task = data.get("step", ""), data.get("task", "")
     if not frames or not step:
         return JSONResponse({"done": False, "issue": "", "error": "need frames and step", "latency_ms": 0}, 400)
-    frames = [_shrink(f) for f in frames[-4:]]
+    frames = [_shrink(f, 960) for f in frames[-4:]]
     tid, d = task_def(task)
     cur = None
     if d:

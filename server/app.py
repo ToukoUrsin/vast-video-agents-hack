@@ -138,8 +138,6 @@ def check_cap_swap(o: dict, cur: int) -> tuple[set[int], str]:
     if dew == "black cap on":
         vis |= {2, 5}
     issue = ""
-    if hands:  # mid-action readings are noisy; correct only once the person lets go
-        return vis, ""
     if cur >= 3 and dew == "green cap on" and "coca" in left:
         issue = "That green cap goes on the Coca-Cola, not the Mountain Dew."
     elif cur >= 3 and coke == "black cap on" and "coca" in left:
@@ -452,7 +450,7 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
     issue = ""
     if advance > cur:
         state = "done"
-    elif skipped and not hands_busy:
+    elif skipped:
         state = "mistake"
         issue = f"You skipped a step. {d['steps'][cur]} first."
         if wrong:
@@ -464,6 +462,8 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
     return {
         "state": state,
         "issue": issue,
+        # mid-action readings are noisy: the UI needs a longer streak before speaking a tentative correction
+        "tentative": bool(state == "mistake" and hands_busy),
         "advance_to": advance,
         "completed_steps": sorted(visible),
         "observation": obs if obs is not None else obs_text,

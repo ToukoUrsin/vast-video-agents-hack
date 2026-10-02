@@ -21,6 +21,8 @@ export interface CheckResult {
   issue?: string
   /** Index of the first step NOT yet completed, when the person is ahead of the coach (catch-up) */
   advanceTo?: number
+  /** Mistake seen while hands were still on the objects: needs a longer streak before it is spoken */
+  tentative?: boolean
   /** Model latency to show in the status line; measured if omitted */
   latencyMs?: number
 }

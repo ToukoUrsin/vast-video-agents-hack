@@ -113,7 +113,8 @@ export function useCoach(opts: {
         mistakeStreak = st === 'mistake' && result.issue ? mistakeStreak + 1 : 0
         const act = st === 'done' && doneStreak >= requiredDone
         if (act) doneStreak = 0
-        const mistakeConfirmed = mistakeStreak >= requiredDone
+        // hands off: 2 readings in a row; hands still on the objects: 4 in a row (~4 s of a stable wrong state)
+        const mistakeConfirmed = mistakeStreak >= (result.tentative ? requiredDone * 2 : requiredDone)
         dispatch({
           type: 'CHECK',
           result: {

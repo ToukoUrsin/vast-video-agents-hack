@@ -15,7 +15,7 @@ const params = new URLSearchParams(location.search)
 const VIDEO = { x: 96, y: 152, w: 1184, h: 666 }
 
 export function Coach() {
-  const { setSession } = useApp()
+  const { setSession, setScreen } = useApp()
   const { videoRef, camera, retry } = useCamera()
   const task = getCluster(params.get('task') ?? 'cap-swap') ?? tasks()[0]
   // Live by default (Cosmos via our server). ?checker=mock = rehearsal: N / M drive the steps.
@@ -59,6 +59,12 @@ export function Coach() {
   useEffect(() => {
     if (state.result) setSession(state.result)
   }, [state.result, setSession])
+  // task finished: let "Nice work" land, then go to the score card
+  useEffect(() => {
+    if (state.phase !== 'complete') return
+    const id = setTimeout(() => setScreen(4), 3200)
+    return () => clearTimeout(id)
+  }, [state.phase, setScreen])
 
   useKeys({
     ' ': () => state.phase === 'idle' && start(),

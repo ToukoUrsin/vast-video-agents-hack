@@ -33,6 +33,7 @@ import upstreams as U
 
 HERE = Path(__file__).resolve().parent
 TASK_INDEX = HERE / "task_index.json"
+LIVE_DIR = Path("/tmp/understudy-live")
 SNAPSHOT = U.ROOT / "web" / "src" / "data" / "real-archive.json"
 
 # Tasks the demo performs. Used for zero-shot recognition until our recordings are in the index.
@@ -82,9 +83,9 @@ TASK_DEFS = {
             "Put 1 cup on top",
             "Take the pyramid down into one stack",
         ],
-        "observe": 'Look at the most recent frame. Describe the clear plastic cups on the floor; count carefully, they '
-        'are transparent. Reply ONLY JSON: {"bottom_row_cups": 0, "second_row_cups": 0, "top_row_cups": 0, '
-        '"all_cups_in_one_nested_stack": true|false}',
+        "observe": 'Look at the clear plastic cups on the floor. Answer with counts you can actually see. '
+        'Reply ONLY JSON: {"cups_standing_on_floor": 0, "cups_resting_on_other_cups": 0, '
+        '"all_cups_nested_in_one_stack": true|false, "hands_touching_cups": true|false}',
     },
     "vast-astronaut": {
         "label": "VAST astronaut",
@@ -154,20 +155,24 @@ def _int(v) -> int:
 
 
 def check_cup_pyramid(o: dict, cur: int) -> tuple[set[int], str]:
-    b, m, t = _int(o.get("bottom_row_cups")), _int(o.get("second_row_cups")), _int(o.get("top_row_cups"))
-    nested = o.get("all_cups_in_one_nested_stack") in (True, "true")
+    # Cosmos counts "on the floor" vs "resting on other cups" far better than rows (the top cup is often
+    # at the frame edge with this low camera): 3/0 = row, 3/2 = second level, 3/3 = full 3-2-1 pyramid.
+    floor, up = _int(o.get("cups_standing_on_floor")), _int(o.get("cups_resting_on_other_cups"))
+    nested = o.get("all_cups_nested_in_one_stack") in (True, "true")
     vis = set()
-    if b >= 3:
+    if floor >= 3:
         vis.add(1)
-    if b >= 3 and m >= 2:
+    if floor >= 3 and up >= 2:
         vis |= {1, 2}
-    if m >= 2 and t >= 1:
+    if floor >= 3 and up >= 3:
         vis |= {1, 2, 3}
-    if nested and cur >= 3:
+    if cur >= 3 and (nested or (floor <= 1 and up <= 1)):
         vis.add(4)
     issue = ""
-    if cur <= 1 and b == 2 and m >= 1:
+    if cur <= 2 and floor == 2 and up >= 1:
         issue = "The bottom row needs 3 cups before you build on it."
+    elif cur == 2 and floor >= 3 and up >= 4:
+        issue = "Only one cup goes on the very top."
     return vis, issue
 
 
@@ -502,6 +507,14 @@ async def check_step(req: Request):
         return {"done": False, "state": "working", "issue": "", "error": f"{type(e).__name__}: {e}"[:200], "latency_ms": ms, "latencyMs": ms}
     ms = int((time.perf_counter() - t0) * 1000)
     out = {k: v for k, v in res.items() if k != "raw"}
+    try:  # live debug log: what Cosmos saw on every check, plus the last frame
+        LIVE_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%H%M%S") + f"_{int(time.time() * 1000) % 1000:03d}"
+        (LIVE_DIR / f"{stamp}.jpg").write_bytes(frames[-1])
+        with open(LIVE_DIR / "checks.jsonl", "a") as fh:
+            fh.write(json.dumps({"t": stamp, "task": task, "step": step, "ms": ms, **out}, default=str) + "\n")
+    except Exception as e:
+        print("live log failed:", e)
     out.update({"done": res["state"] == "done", "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL, "judge_model": JUDGE_MODEL})
     return out
 

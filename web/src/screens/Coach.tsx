@@ -273,7 +273,7 @@ function Rail({ state, elapsed, rehearsal, forced }: { state: CoachState; elapse
               <motion.span
                 layout="position"
                 className={`leading-[1.15] tracking-[-0.015em] ${
-                  current ? `text-[36px] font-medium ${err ? 'text-err' : 'text-ink'}` : done ? 'text-[22px] text-ink-2' : 'text-[22px] text-ink-3'
+                  current ? `text-[34px] font-medium text-balance ${err ? 'text-err' : 'text-ink'}` : done ? 'text-[22px] text-ink-2' : 'text-[22px] text-ink-3'
                 }`}
               >
                 {step.text}

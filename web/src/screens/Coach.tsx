@@ -284,7 +284,7 @@ function Rail({ state, shownIndex, elapsed, rehearsal, forced }: { state: CoachS
       </AnimatePresence>
       {task && (
         <motion.p className="mt-2 font-mono text-[16px] text-ink-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}>
-          {forced ? 'selected by presenter' : 'recognised'} · {task.steps.length} learned steps
+          {forced ? 'selected by presenter' : 'recognised'} · {task.steps.length} steps from our expert takes
         </motion.p>
       )}
 
@@ -348,7 +348,7 @@ function Rail({ state, shownIndex, elapsed, rehearsal, forced }: { state: CoachS
 function KnownTasks({ detecting }: { detecting: boolean }) {
   return (
     <div className="mt-10">
-      <p className="font-mono text-[16px] text-ink-3">Learned from our recordings</p>
+      <p className="font-mono text-[16px] text-ink-3">From our recordings</p>
       <div className="mt-3 flex flex-col">
         {tasks().map((t, i) => {
           const best = library.clips.filter((c) => c.cluster_id === t.id).sort((a, b) => (b.score ?? 0) - (a.score ?? 0))[0]

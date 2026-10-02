@@ -8,7 +8,7 @@ Keys: `1`–`4` screens, `Space` next beat, `R` reset coach, `T` force Cap swap 
 |---|---|---|---|
 | 0:00 | Library | "Every company records how its best people work, and nobody ever watches it. This archive alone has 2,352 clips." | – |
 | 0:10 | Library, press Space | "Understudy pulls it all through VAST: YOLO finds objects, Cosmos Reason describes every clip, Cosmos Embed turns it into vectors in VastDB. This is a replay of that run." | – |
-| 0:30 | Map (2), press Space | "Nobody labeled anything. It found the activities on its own: forklifts, traffic, people crossing. And here are three tasks we recorded today." Click **Cap swap**. "It learned the steps from our best takes. The sloppy take sits at the edge with a low rating." | – |
+| 0:30 | Map (2), press Space | "Nobody labeled anything. It found the activities on its own: forklifts, traffic, people crossing. And here are three tasks we recorded today." Click **Cap swap**. "We turned our best takes into a step list, with the expert clip for every step. The sloppy take sits at the edge with a low rating." | – |
 | 0:55 | Coach (3) | "Now a new person. Alex hasn't said what he's doing." | Walks up, hands off for 2 s, then starts: green cap off the Dew. |
 | 1:00 | Coach | (coach recognises Cap swap and speaks) "It recognised the task from the camera and talks him through it." | Black cap off the Coke, swap the bottles. |
 | 1:15 | Coach | – | **Mistake:** screws the green cap back onto the Mountain Dew, **lets go**, waits. |

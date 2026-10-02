@@ -279,7 +279,7 @@ function StepsPanel({ cluster, onClose }: { cluster: Cluster; onClose: () => voi
         Esc
       </button>
       <p className="font-mono text-[17px] text-ink-2">
-        Learned from {members.length} {ours ? 'takes' : 'clips'}
+        {ours ? `Steps and expert clips from ${members.length} takes` : `${members.length} clips`}
       </p>
       <h2 className="mt-2 text-[44px] font-medium leading-[1.05] tracking-[-0.025em]">{cluster.label}</h2>
       <p className="mt-3 text-[20px] text-ink-2">

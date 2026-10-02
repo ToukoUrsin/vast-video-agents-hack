@@ -660,9 +660,17 @@ def formula_score(steps: list[dict]) -> int:
 
 @op
 def llm_feedback(task: str, steps: list[dict]) -> dict:
+    prev_t = 0.0
+    durs = []
+    for st in steps:
+        t = st.get("t")
+        durs.append(None if t is None else max(0.0, float(t) - prev_t))
+        if t is not None:
+            prev_t = float(t)
+    slow = max(((d, i) for i, d in enumerate(durs) if d is not None), default=(None, None))
     lines = "\n".join(
         f"{i + 1}. {s.get('text')}: {'done' if s.get('done') else 'NOT done'}"
-        + (f" at {s.get('t')}s" if s.get("t") is not None else "")
+        + (f" at {s.get('t')}s (took {durs[i]:.0f}s)" if durs[i] is not None else "")
         + (f" — correction given: {s['issue']}" if s.get("issue") else "")
         for i, s in enumerate(steps)
     )
@@ -673,7 +681,9 @@ def llm_feedback(task: str, steps: list[dict]) -> dict:
         "coach voice, 10-20 words each, full sentences addressed to the trainee as 'you':\n"
         "1) what you did well, naming concrete steps;\n"
         "2) the one thing to do differently next time and why it matters for the result. If there were no "
-        "corrections, make line 2 a concrete tip from the step timings instead (e.g. the slowest step).\n"
+        "corrections, make line 2 a concrete tip about the slowest step"
+        + (f" (step {slow[1] + 1}, which took {slow[0]:.0f}s)" if slow[1] is not None else "")
+        + ".\n"
         'Example: ["You set up the base and stacked the red brick cleanly on the first try.", '
         '"Next time place the blue brick before the yellow one, or the tower is built in the wrong order."]\n'
         'Return ONLY JSON: {"score": int, "feedback": ["...", "..."]}'

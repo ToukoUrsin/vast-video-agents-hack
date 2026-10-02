@@ -14,7 +14,7 @@ lsof -ti tcp:5190 | xargs kill 2>/dev/null || true
 for i in $(seq 1 40); do curl -s -m 2 -o /dev/null localhost:8787/api/health && break; sleep 0.5; done
 for i in $(seq 1 40); do curl -s -m 2 -o /dev/null localhost:5190 && break; sleep 0.5; done
 
-curl -s -m 8 localhost:8787/api/health | python3 -c "
+sleep 2; curl -s -m 15 localhost:8787/api/health | python3 -c "
 import sys, json
 h = json.load(sys.stdin)
 for k in ('cosmos_reason', 'cosmos_embed', 'wandb', 'vss'):

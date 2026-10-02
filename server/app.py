@@ -140,8 +140,7 @@ def check_cap_swap(o: dict, cur: int) -> tuple[set[int], str]:
     issue = ""
     if cur >= 3 and dew == "green cap on" and "coca" in left:
         issue = "That green cap goes on the Coca-Cola, not the Mountain Dew."
-    elif cur >= 3 and coke == "black cap on" and "coca" in left:
-        issue = "The black cap goes on the Mountain Dew, not the Coca-Cola."
+    # (no "black cap on the Coca-Cola" check: Cosmos misreads the open Coke neck as capped)
     elif cur == 2 and (4 in vis or 5 in vis) and 3 not in vis:
         issue = "Swap the two bottles before you put the caps back."
     return vis, issue
@@ -464,6 +463,9 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
         "issue": issue,
         # mid-action readings are noisy: the UI needs a longer streak before speaking a tentative correction
         "tentative": bool(state == "mistake" and hands_busy),
+        # hands off and both frames agree on the wrong state: safe to speak on the first reading
+        "confident": bool(state == "mistake" and not hands_busy and isinstance(obs, dict)
+                          and task_id == "cap-swap" and "green cap goes on the Coca-Cola" in issue),
         "advance_to": advance,
         "completed_steps": sorted(visible),
         "observation": obs if obs is not None else obs_text,

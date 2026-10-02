@@ -127,7 +127,7 @@ export function coachReducer(s: CoachState, e: CoachEvent): CoachState {
   }
 }
 
-function gerund(stepText: string) {
+export function gerund(stepText: string) {
   // "Fold bottom flaps" -> "folding bottom flaps"; good enough for the spoken intro
   const [verb, ...rest] = stepText.split(' ')
   const v = verb.toLowerCase()

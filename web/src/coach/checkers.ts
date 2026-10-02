@@ -39,9 +39,10 @@ export class MockStepChecker implements StepChecker {
     // simulated model latency so the status line looks real
     await new Promise((r) => setTimeout(r, 300 + Math.random() * 400))
     const cmd = this.queue.shift()
-    if (cmd === 'done') return { done: true }
-    if (cmd === 'mistake') return { done: false, issue: step.common_mistake ?? `That doesn't look like "${step.text}" yet.` }
-    return { done: false }
+    const latencyMs = 1700 + Math.random() * 700
+    if (cmd === 'done') return { done: true, latencyMs }
+    if (cmd === 'mistake') return { done: false, issue: step.common_mistake ?? `That doesn't look like "${step.text}" yet.`, latencyMs }
+    return { done: false, latencyMs }
   }
 }
 

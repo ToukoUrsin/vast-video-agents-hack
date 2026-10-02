@@ -31,6 +31,10 @@ export default function App() {
   }, [field])
 
   useEffect(() => {
+    if (screen >= 3) field.hideAll(350)
+  }, [screen, field])
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return
       if (e.target instanceof HTMLInputElement) return

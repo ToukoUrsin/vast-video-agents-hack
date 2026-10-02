@@ -33,7 +33,7 @@ export function Thumb({
     c.getContext('2d')!.drawImage(img, 0, 0)
   }, [clip, size, v])
   return (
-    <div className={`relative overflow-hidden bg-surface ${className}`}>
+    <div className={`${/\b(absolute|fixed)\b/.test(className) ? '' : 'relative'} overflow-hidden bg-surface ${className}`}>
       <canvas
         ref={ref}
         className="absolute inset-0 h-full w-full object-cover"

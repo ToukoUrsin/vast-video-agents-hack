@@ -3,6 +3,7 @@
 import type { Cluster } from '../data/types'
 import { getClip } from '../data'
 import type { MistakeRecord, SessionResult, StepRecord } from './types'
+import { gerund } from './machine'
 
 export function scoreSession(steps: StepRecord[], mistakes: MistakeRecord[], durationS: number) {
   let s = 100
@@ -17,9 +18,10 @@ export function buildFeedback(task: Cluster, steps: StepRecord[], mistakes: Mist
   const m = mistakes[0]
   const step = task.steps[m.stepIndex]
   const after = steps[m.stepIndex]
+  const others = steps.length - mistakes.length
   return [
-    `${step.text} was skipped at first and fixed after the prompt${after.at ? ` at ${fmt(after.at)}` : ''}.`,
-    `Everything else matched the best take. Do ${step.text.toLowerCase()} before moving on.`,
+    `Skipped ${gerund(step.text)} at first, then fixed it after the prompt${after.at ? ` at ${fmt(after.at)}` : ''}.`,
+    `The other ${others} steps matched the best take, in order and at a similar pace.`,
   ]
 }
 

@@ -12,6 +12,8 @@ export interface CheckResult {
   done: boolean
   /** Present when the person is doing something wrong; spoken + shown as a correction */
   issue?: string
+  /** Model latency to show in the status line; measured if omitted */
+  latencyMs?: number
 }
 
 /** Decides whether the current step is done. Real impl: Cosmos Reason via our server. */

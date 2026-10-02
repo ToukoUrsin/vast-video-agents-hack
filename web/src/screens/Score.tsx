@@ -73,6 +73,8 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
   const m = result.mistakes[0]
   const expert = m ? expertClipFor(result.task, m.stepIndex) : undefined
   const sloppy = library_sloppy(result.task.id)
+  const lastStep = result.task.steps[result.task.steps.length - 1]
+  const lastExpert = expertClipFor(result.task, result.task.steps.length - 1)
   const stepsDone = result.steps.filter((s) => s.outcome !== 'missed').length
   const base = 0.9
 
@@ -109,7 +111,7 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
         </motion.div>
 
         <motion.div
-          className="mt-16 border-t border-line pt-7"
+          className="mt-14 border-t border-line pt-8"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: pending ? 0 : 1, y: pending ? 10 : 0 }}
           transition={{ delay: pending ? 0 : Math.max(0.6, base + result.steps.length * 0.16 + 0.9 - mountedFor()), type: 'spring', stiffness: 200, damping: 30 }}
@@ -118,14 +120,17 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
             Feedback
             {result.scoredBy === 'llm' && <span className="text-ink-3"> · {modelName(result.scoredModel)} via W&amp;B</span>}
           </p>
-          <p className="mt-3 text-[26px] leading-[1.4] tracking-[-0.01em] text-ink">{result.feedback[0]}</p>
-          <p className="mt-2 text-[26px] leading-[1.4] tracking-[-0.01em] text-ink-2">{result.feedback[1]}</p>
+          <p className="mt-4 text-[30px] leading-[1.35] tracking-[-0.015em] text-ink text-pretty">{result.feedback[0]}</p>
+          <p className="mt-4 text-[26px] leading-[1.4] tracking-[-0.01em] text-ink-2 text-pretty">{result.feedback[1]}</p>
         </motion.div>
       </div>
 
       {/* right */}
       <div className="absolute left-[880px] right-24 top-[184px]">
-        <p className="font-mono text-[17px] text-ink-2">Steps</p>
+        <div className="flex items-baseline justify-between">
+          <p className="font-mono text-[17px] text-ink-2">Steps</p>
+          <p className="font-mono text-[15px] text-ink-3">when each step happened · 0 – {fmt(result.durationS)}</p>
+        </div>
         <div className="mt-3">
           {result.steps.map((r, i) => {
             const ok = r.outcome === 'done'
@@ -140,11 +145,40 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
                 <Mark ok={ok} delay={base + i * 0.16 + 0.1} />
                 <span className={`flex-1 text-[24px] tracking-[-0.01em] ${ok ? 'text-ink' : 'text-ink'}`}>{r.step.text}</span>
                 {!ok && <span className="font-mono text-[16px] text-err">{r.outcome === 'fixed' ? 'fixed after prompt' : 'missed'}</span>}
+                <TimingBar
+                  from={i === 0 ? 0 : (result.steps[i - 1].at ?? 0)}
+                  to={r.at ?? 0}
+                  total={Math.max(1, result.durationS)}
+                  tone={ok ? 'go' : 'err'}
+                  delay={base + i * 0.16 + 0.15}
+                />
                 <span className="tnum w-[72px] text-right font-mono text-[18px] text-ink-3">{r.at != null ? fmt(r.at) : '–'}</span>
               </motion.div>
             )
           })}
         </div>
+
+        {!m && result.finalFrameUrl && (
+          <motion.div
+            className="mt-12"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: base + result.steps.length * 0.16 + 0.3, type: 'spring', stiffness: 220, damping: 30 }}
+          >
+            <div className="flex items-baseline justify-between">
+              <p className="font-mono text-[17px] text-go">Finished · {fmt(result.durationS)} · no corrections</p>
+              <p className="font-mono text-[17px] text-ink-3">Your finish vs expert</p>
+            </div>
+            <div className="mt-5 grid grid-cols-2 gap-4">
+              <Frame label={`You · ${fmt(result.durationS)}`} tone="go">
+                <img src={result.finalFrameUrl} className="absolute inset-0 h-full w-full object-cover" />
+              </Frame>
+              <Frame label={`Expert · ${lastExpert?.take_label ?? 'best take'}`} tone="go">
+                <ExpertClip clip={lastExpert} start={lastStep.expert_start_s} end={lastStep.expert_end_s} poster={lastStep.expert_poster_url} variant={result.task.steps.length} className="absolute inset-0" />
+              </Frame>
+            </div>
+          </motion.div>
+        )}
 
         {m && (
           <motion.div
@@ -163,7 +197,7 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
             <div className="mt-5 grid grid-cols-2 gap-4">
               <Frame label={`You · ${fmt(m.at)}`} tone="err">
                 {m.frameUrl ? (
-                  <img src={m.frameUrl} className="absolute inset-0 h-full w-full -scale-x-100 object-cover" />
+                  <img src={m.frameUrl} className="absolute inset-0 h-full w-full object-cover" />
                 ) : (
                   <Thumb clip={sloppy} className="absolute inset-0" />
                 )}
@@ -182,6 +216,23 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
 function library_sloppy(taskId: string) {
   const ids: Record<string, string> = { 'cap-swap': 'ours-caps-3', 'cup-pyramid': 'ours-cups-3', 'vast-astronaut': 'ours-astro-3' }
   return getClip(ids[taskId] ?? '')
+}
+
+/** Where in the session a step happened, on a shared 0..total axis. */
+function TimingBar({ from, to, total, tone, delay }: { from: number; to: number; total: number; tone: 'go' | 'err'; delay: number }) {
+  const left = Math.min(1, from / total)
+  const width = Math.max(0.012, Math.min(1, (to - from) / total))
+  return (
+    <div className="relative h-[6px] w-[200px] shrink-0 rounded-full bg-white/[0.06]">
+      <motion.div
+        className={`absolute inset-y-0 rounded-full ${tone === 'go' ? 'bg-go/70' : 'bg-err/80'}`}
+        style={{ left: `${left * 100}%`, transformOrigin: 'left' }}
+        initial={{ width: 0 }}
+        animate={{ width: `${width * 100}%` }}
+        transition={{ delay, duration: 0.5, ease: [0.2, 0.7, 0.2, 1] }}
+      />
+    </div>
+  )
 }
 
 function Stat({ label, value, tone }: { label: string; value: string; tone?: 'err' }) {

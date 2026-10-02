@@ -118,6 +118,7 @@ export function coachReducer(s: CoachState, e: CoachEvent): CoachState {
               durationS,
               score,
               feedback: buildFeedback(s.task, steps, s.mistakes),
+              finalFrameUrl: e.frameUrl,
             },
           }
         }

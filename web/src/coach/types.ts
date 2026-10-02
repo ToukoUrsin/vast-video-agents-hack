@@ -67,4 +67,6 @@ export interface SessionResult {
   durationS: number
   score: number
   feedback: [string, string]
+  /** what the camera saw when the last step ticked */
+  finalFrameUrl?: string | null
 }

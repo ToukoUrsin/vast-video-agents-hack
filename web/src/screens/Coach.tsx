@@ -88,7 +88,7 @@ export function Coach() {
         className="absolute overflow-hidden rounded-[20px] border border-line-strong bg-surface"
         style={{ left: VIDEO.x, top: VIDEO.y, width: VIDEO.w, height: VIDEO.h }}
       >
-        <video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full -scale-x-100 object-cover" />
+        <video ref={videoRef} muted playsInline className="absolute inset-0 h-full w-full object-cover" />
         {camera !== 'live' && <CameraEmpty state={camera} onRetry={retry} />}
 
         {/* chrome */}
@@ -252,7 +252,7 @@ function Rail({ state, shownIndex, elapsed, rehearsal, forced }: { state: CoachS
   else status = { dot: 'bg-go', text: `Watching${latency ? ` · ${latency}` : ''}` }
 
   return (
-    <div className="absolute bottom-[262px] left-[1344px] right-24 top-[152px] flex flex-col">
+    <div className="absolute bottom-[64px] left-[1344px] right-24 top-[152px] flex flex-col">
       <div className="font-mono text-[17px] text-ink-2">Task</div>
       <AnimatePresence mode="wait">
         <motion.h2
@@ -274,7 +274,7 @@ function Rail({ state, shownIndex, elapsed, rehearsal, forced }: { state: CoachS
 
       {!task && <KnownTasks detecting={state.phase === 'detecting'} />}
 
-      <div className="mt-10 flex flex-col">
+      <div className="mt-7 flex flex-col">
         {task?.steps.map((step, i) => {
           const done = i < shownIndex
           const current = i === shownIndex && state.phase === 'coaching'
@@ -362,17 +362,14 @@ function Reference({ task, stepIndex }: { task: Cluster; stepIndex: number }) {
   return (
     <motion.div
       key={step.id}
-      className="flex items-center gap-4 pb-5"
+      className="relative mb-5 overflow-hidden rounded-[12px] border border-line"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4, delay: 0.3 }}
     >
-      <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} poster={step.expert_poster_url} variant={stepIndex + 1} className="h-[72px] w-[128px] shrink-0 rounded-[8px]" />
-      <div>
-        <p className="font-mono text-[15px] text-ink-3">Expert reference</p>
-        <p className="mt-1 text-[18px] text-ink-2">
-          {clip?.take_label ?? 'Best take'} · {fmt(step.expert_start_s)}
-        </p>
+      <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} poster={step.expert_poster_url} variant={stepIndex + 1} className="aspect-video w-full" />
+      <div className="absolute left-2.5 top-2.5 rounded-full bg-stage/80 px-2.5 py-0.5 font-mono text-[13px] text-ink">
+        Expert · {clip?.take_label ?? 'best take'} · step {stepIndex + 1}
       </div>
     </motion.div>
   )

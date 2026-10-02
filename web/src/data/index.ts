@@ -1,11 +1,25 @@
-// Single entry point for app data. Today: seeded placeholders. Later: fetch from our
-// server proxy (VastDB rows) and keep the same LibraryData shape.
+// Single entry point for app data. Seeded placeholders unless public/data/library.json
+// exists (a VastDB export with the same LibraryData shape; any top-level key overrides).
 import { PLACEHOLDER } from './placeholder'
 import type { Clip, Cluster, LibraryData } from './types'
 
 export * from './types'
 
-export const library: LibraryData = PLACEHOLDER
+async function load(): Promise<LibraryData> {
+  try {
+    const res = await fetch('/data/library.json', { cache: 'no-store' })
+    if (res.ok && res.headers.get('content-type')?.includes('json')) {
+      const real = (await res.json()) as Partial<LibraryData>
+      console.info('[understudy] using public/data/library.json')
+      return { ...PLACEHOLDER, ...real }
+    }
+  } catch {
+    // fall through to placeholders
+  }
+  return PLACEHOLDER
+}
+
+export const library: LibraryData = await load()
 
 const clipIndex = new Map(library.clips.map((c) => [c.clip_id, c]))
 const clusterIndex = new Map(library.clusters.map((c) => [c.id, c]))

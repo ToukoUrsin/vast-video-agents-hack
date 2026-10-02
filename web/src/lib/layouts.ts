@@ -244,11 +244,21 @@ export function clusterLayout(
     }
     x = Math.max(area.x, Math.min(area.x + area.w - NOISE_TILE.w, x))
     y = Math.max(area.y, Math.min(area.y + area.h - NOISE_TILE.h, y))
+    // never sit on a label or inside a cluster
+    const blocked = geoms.some((g) => {
+      const lw = g.label.length * (g.source === 'ours' ? 13 : 11) + 110
+      const lx = g.box.x + g.box.w / 2 - lw / 2 - 16
+      const ly = g.box.y + g.box.h
+      return (
+        (x + NOISE_TILE.w > lx && x < lx + lw + 32 && y + NOISE_TILE.h > ly && y < ly + 64) ||
+        (x + NOISE_TILE.w > g.box.x - 8 && x < g.box.x + g.box.w + 8 && y + NOISE_TILE.h > g.box.y - 8 && y < g.box.y + g.box.h + 8)
+      )
+    })
     targets.set(clip.clip_id, {
       x,
       y,
       ...NOISE_TILE,
-      alpha: 0.32,
+      alpha: blocked ? 0 : 0.32,
       delay: noiseDelay + (opts.animate ? (i / noise.length) * 300 : 0),
       dur: opts.dur,
     })

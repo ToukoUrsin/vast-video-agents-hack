@@ -22,6 +22,7 @@ Evidence rule: anything replayed or pre-recorded is labelled as such on screen. 
 ## Architecture
 
 - `web/`: Vite + React + TypeScript + Tailwind + Framer Motion. Runs on the presenter Mac (localhost = webcam works).
+  Run: `cd web && bun install && bun run dev` → http://localhost:5180 · keys 1–4 / Space / R · `?dev` rehearsal bar (N step done, M mistake) · data seam `web/src/data/` (+ optional `web/public/data/library.json`).
 - `server/`: small proxy holding team credentials (from `.env.local`, gitignored): VSS backend (`INGRESS_URL`), VastDB reads, Cosmos Reason / Embed endpoints, W&B inference.
 - Step check: every ~2–3 s send the latest frames/clip to Cosmos Reason: "Has the person completed '<step>'? If not, what is wrong?" → advance / correct.
 - Task recognition: embed the first seconds of live video, nearest cluster in the library.

@@ -121,6 +121,7 @@ export function MapScreen() {
     escape: () => (search != null ? closeSearch() : select(null)),
     '/': openSearch,
     r: () => {
+      if (search != null) closeSearch()
       select(null)
       setLayout(null)
       setSettled(new Set())

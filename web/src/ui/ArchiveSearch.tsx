@@ -108,6 +108,7 @@ export function ArchiveSearch({ onClose, onHits, focusKey }: { onClose: () => vo
           onKeyDown={(e) => {
             if (e.key === 'Escape') {
               e.preventDefault()
+              e.currentTarget.blur() // the panel animates out; screen keys must work right away
               onClose()
             }
           }}

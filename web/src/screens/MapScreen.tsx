@@ -199,7 +199,7 @@ export function MapScreen() {
           transition={{ delay: selected ? 0 : 2.4, duration: 0.6 }}
         >
           <span>1 tile = 1 clip</span>
-          <span>position = Cosmos Embed similarity</span>
+          <span>archive position = Cosmos Embed similarity · our takes grouped by task</span>
           <span>
             number = take rating, <span className="text-err">red</span> = sloppy take
           </span>

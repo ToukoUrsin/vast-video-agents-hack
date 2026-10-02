@@ -113,9 +113,11 @@ def name_clusters(groups: list[dict], use_llm: bool) -> list[dict]:
     prompt = (
         "These are clusters of 5-second video clips from cameras (highway, dashcam, streets, warehouse, indoor). "
         "Each cluster lists sample Cosmos Reason captions. For each cluster write:\n"
-        '- "label": a short activity label, 2-5 words, sentence case, naming the dominant action and actor, '
-        'like "Truck changing lanes", "Forklift moving pallet", "People crossing street". Labels must be distinct '
-        "from each other; prefer the action that sets this cluster apart.\n"
+        '- "label": a short activity label, 2-4 words, sentence case, verb-led: actor + action (+ setting only '
+        'if needed), like "Truck changing lanes", "Forklift moving pallet", "People crossing street", '
+        '"Dashcam stopped at light". Never use vague words like "activity", "scene", "flowing", "operation". '
+        "Labels must be clearly distinct; name what sets this cluster apart from the others "
+        "(viewpoint, time of day, actor, action).\n"
         '- "steps": 5 very short phases (2-5 words each) of that activity in time order.\n'
         'Return ONLY a JSON array of objects {"cluster": int, "label": str, "steps": [str]} in cluster order.\n\n'
         + "\n\n".join(blocks)
@@ -170,6 +172,17 @@ def learn_steps(task_label: str, segments: list[dict], use_llm: bool) -> list[di
         {"text": s["reasoning_content"].split(".")[0][:60], "start": s["segment_start_sec"], "end": s["segment_end_sec"]}
         for s in segments[:5]
     ]
+
+
+def short_caption(text: str, limit: int = 190) -> str:
+    """First sentence or two of a Cosmos caption, for hover cards."""
+    sents = re.split(r"(?<=[.!?])\s+", (text or "").strip())
+    out = ""
+    for snt in sents:
+        if out and len(out) + len(snt) + 1 > limit:
+            break
+        out = f"{out} {snt}".strip()
+    return out if len(out) <= limit + 60 else out[:limit].rsplit(" ", 1)[0] + "…"
 
 
 def free_spot(xy: np.ndarray) -> list[float]:
@@ -239,7 +252,9 @@ def main() -> None:
         d = np.linalg.norm(T[idx] - km.cluster_centers_[c], axis=1)
         near = idx[np.argsort(d)]
         # nearest captions, de-duplicated by site so a mixed cluster shows its mix
-        caps = [stock[i]["reasoning_content"] for i in near[:10]]
+        rng = np.random.default_rng(c)
+        extra = rng.choice(near[10:], size=min(4, max(0, len(near) - 10)), replace=False) if len(near) > 10 else []
+        caps = [stock[i]["reasoning_content"] for i in list(near[:6]) + list(extra)]
         classes = Counter(cl for i in idx for cl in (stock[i].get("object_classes") or "").split(",") if cl)
         sites = Counter(SITES[stock[i]["location"]]["name"] for i in idx)
         groups.append({"idx": idx, "near": near, "captions": caps, "classes": classes, "sites": sites})
@@ -300,7 +315,8 @@ def main() -> None:
                 "source": "stock",
                 "thumbnail_url": f"/clips/{r['pk']}.jpg",
                 "video_url": None,
-                "caption": r["reasoning_content"],
+                "caption": short_caption(r["reasoning_content"]),
+                "caption_full": r["reasoning_content"],
                 "embedding2d": {"x": round(float(xy_stock[i][0]), 4), "y": round(float(xy_stock[i][1]), 4)},
                 "cluster_id": None if dist[k] > noise_cut else stock_cluster_id[int(labels[i])],
                 "duration_s": round(float(r.get("duration") or 5), 1),

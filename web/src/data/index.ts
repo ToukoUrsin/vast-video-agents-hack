@@ -1,22 +1,26 @@
-// Single entry point for app data. Seeded placeholders unless public/data/library.json
-// exists (a VastDB export with the same LibraryData shape; any top-level key overrides).
+// Single entry point for app data. Real VSS archive (real-archive.json, from server/build_map.py)
+// merged with placeholder task takes; public/data/library.json, if present, overrides that.
+// ?data=placeholder forces the seeded placeholders.
 import { PLACEHOLDER } from './placeholder'
+import { mergeReal, REAL_ARCHIVE, usePlaceholder } from './real'
 import type { Clip, Cluster, LibraryData } from './types'
 
 export * from './types'
 
 async function load(): Promise<LibraryData> {
+  if (usePlaceholder()) return PLACEHOLDER
+  const base = mergeReal(PLACEHOLDER, REAL_ARCHIVE)
   try {
     const res = await fetch('/data/library.json', { cache: 'no-store' })
     if (res.ok && res.headers.get('content-type')?.includes('json')) {
       const real = (await res.json()) as Partial<LibraryData>
       console.info('[understudy] using public/data/library.json')
-      return { ...PLACEHOLDER, ...real }
+      return mergeReal(base, real)
     }
   } catch {
-    // fall through to placeholders
+    // fall through to the bundled snapshot
   }
-  return PLACEHOLDER
+  return base
 }
 
 export const library: LibraryData = await load()

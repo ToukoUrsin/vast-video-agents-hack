@@ -8,6 +8,7 @@ import { clusterLayout, fitGrid, type MapLayout } from '../lib/layouts'
 import { HoverCard } from '../ui/HoverCard'
 import { GRID_COLS } from './Library'
 import { ExpertClip } from '../ui/ExpertClip'
+import { ArchiveSearch } from '../ui/ArchiveSearch'
 
 const AREA: Rect = { x: 96, y: 200, w: 1728, h: 776 }
 const GRID_AREA: Rect = { x: 96, y: 196, w: 1728, h: 780 }
@@ -24,6 +25,8 @@ export function MapScreen() {
   const [settled, setSettled] = useState<Set<string>>(new Set())
   const [selected, setSelected] = useState<string | null>(null)
   const [hover, setHover] = useState<{ clip: Clip; rect: Rect } | null>(null)
+  // live archive search: panel on the right, map shrinks to the left so every hit stays visible
+  const [search, setSearch] = useState<number | null>(null)
   const overlay = useRef<HTMLDivElement>(null)
   const camRef = useRef<Camera>({ x: 0, y: 0, s: 1 })
   const timers = useRef<number[]>([])
@@ -55,13 +58,30 @@ export function MapScreen() {
       field.onClick = null
       field.interactive = false
       field.setFocus(null)
+      field.setHighlight(null)
       field.setCamera({ x: 0, y: 0, s: 1 }, 500)
       timers.current.forEach(clearTimeout)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field])
 
+  const openSearch = () => {
+    setSelected(null)
+    field.setFocus(null)
+    setSearch((n) => (n ?? 0) + 1)
+    // fit the whole map into the area left of the panel
+    const right = 1920 - 24 - 720 - 56
+    const s = (right - AREA.x) / AREA.w
+    field.setCamera({ x: AREA.x - AREA.x * s, y: 600 - (AREA.y + AREA.h / 2) * s, s }, 900)
+  }
+  const closeSearch = () => {
+    setSearch(null)
+    field.setHighlight(null)
+    field.setCamera({ x: 0, y: 0, s: 1 }, 900)
+  }
+
   const select = (id: string | null) => {
+    if (id && search != null) closeSearch()
     setSelected(id)
     field.setFocus(id)
     const g = layout?.clusters.find((c) => c.id === id)
@@ -98,7 +118,8 @@ export function MapScreen() {
     ' ': () => {
       if (mapPhase === 'grid') runClusters()
     },
-    escape: () => select(null),
+    escape: () => (search != null ? closeSearch() : select(null)),
+    '/': openSearch,
     r: () => {
       select(null)
       setLayout(null)
@@ -195,8 +216,8 @@ export function MapScreen() {
         <motion.div
           className="absolute bottom-12 left-24 flex items-center gap-10 font-mono text-[16px] text-ink-2"
           initial={{ opacity: 0 }}
-          animate={{ opacity: selected ? 0 : 1 }}
-          transition={{ delay: selected ? 0 : 2.4, duration: 0.6 }}
+          animate={{ opacity: selected || search != null ? 0 : 1 }}
+          transition={{ delay: selected || search != null ? 0 : 2.4, duration: 0.6 }}
         >
           <span>1 tile = 1 clip</span>
           <span>archive position = Cosmos Embed similarity · our takes grouped by task</span>
@@ -206,6 +227,30 @@ export function MapScreen() {
         </motion.div>
       )}
 
+      <AnimatePresence>
+        {search == null && !selected && (
+          <motion.button
+            key="ask"
+            onClick={openSearch}
+            className="pointer-events-auto absolute right-24 top-[122px] flex h-[48px] w-[420px] items-center gap-3.5 rounded-full border border-line-strong bg-stage/80 pl-5 pr-3 text-left transition-colors hover:border-white/25"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, transition: { duration: 0.15 } }}
+            transition={{ duration: 0.4 }}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden className="shrink-0">
+              <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="#8C8A86" strokeWidth="2" />
+              <path d="M15.5 15.5 L21 21" stroke="#8C8A86" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            <span className="flex-1 text-[19px] text-ink-2">Ask the archive</span>
+            <span className="font-mono text-[14px] text-ink-3">VAST search</span>
+            <kbd className="rounded-[6px] border border-line-strong px-2 py-0.5 font-mono text-[14px] text-ink-2">/</kbd>
+          </motion.button>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {search != null && <ArchiveSearch key="search" focusKey={search} onClose={closeSearch} onHits={(ids) => field.setHighlight(ids.length ? ids : null)} />}
+      </AnimatePresence>
       <AnimatePresence>{cluster && <StepsPanel key={cluster.id} cluster={cluster} onClose={() => select(null)} />}</AnimatePresence>
       <AnimatePresence>{hover && hoverScreen && !selected && <HoverCard key={hover.clip.clip_id} clip={hover.clip} rect={hoverScreen} />}</AnimatePresence>
 

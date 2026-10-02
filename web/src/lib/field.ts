@@ -51,6 +51,8 @@ export class FieldEngine {
   private k = 1
   hovered: string | null = null
   focusCluster: string | null = null
+  /** search hits: everything else dims, hits get a green outline */
+  highlight: Set<string> | null = null
   dimSource: 'stock' | 'ours' | null = null
   interactive = false
   onHover: ((clip: Clip | null, rect: Rect | null) => void) | null = null
@@ -183,6 +185,11 @@ export class FieldEngine {
     this.dirty = true
   }
 
+  setHighlight(ids: Iterable<string> | null) {
+    this.highlight = ids ? new Set(ids) : null
+    this.dirty = true
+  }
+
   setFocus(cluster: string | null) {
     this.focusCluster = cluster
     this.dirty = true
@@ -254,10 +261,16 @@ export class FieldEngine {
     }
 
     let hoverRect: { x: number; y: number; w: number; h: number } | null = null
+    const hits: Rect[] = []
     for (const t of this.tiles.values()) {
       const s = this.sample(t, now)
       let a = s.alpha
       if (this.focusCluster && t.clip.cluster_id !== this.focusCluster) a *= 0.16
+      if (this.highlight) {
+        if (this.highlight.has(t.clip.clip_id)) {
+          if (a > 0.05) hits.push(s)
+        } else a *= 0.14
+      }
       if (a < 0.01 || s.w < 1) continue
       ctx.globalAlpha = a
       const img = getThumb(t.clip, s.w > 110 ? 'lg' : 'sm')
@@ -276,6 +289,15 @@ export class FieldEngine {
       if (t.clip.clip_id === this.hovered) hoverRect = s
     }
     ctx.globalAlpha = 1
+    if (hits.length) {
+      ctx.strokeStyle = '#4BE38A'
+      ctx.lineWidth = 2.5 / cam.s
+      for (const h of hits) {
+        ctx.beginPath()
+        ctx.roundRect(h.x - 2, h.y - 2, h.w + 4, h.h + 4, 4)
+        ctx.stroke()
+      }
+    }
     if (hoverRect) {
       ctx.strokeStyle = 'rgba(244,242,238,0.95)'
       ctx.lineWidth = 2

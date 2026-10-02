@@ -526,8 +526,12 @@ def llm_feedback(task: str, steps: list[dict]) -> dict:
     prompt = (
         f'A trainee just performed the task "{task}" while an AI coach watched. Step log:\n{lines}\n\n'
         "Score the attempt 0-100 (all steps done in order with no corrections = 90-100; each correction costs "
-        "about 5-10; skipped steps cost more). Then write exactly two short feedback lines (max 18 words each): "
-        "first what went well, second the single most useful thing to fix next time, referencing the step.\n"
+        "about 5-10; skipped steps cost more). Then write exactly two feedback sentences in a warm, specific "
+        "coach voice, 10-20 words each, full sentences addressed to the trainee as 'you':\n"
+        "1) what you did well, naming concrete steps;\n"
+        "2) the one thing to do differently next time and why it matters for the result.\n"
+        'Example: ["You set up the base and stacked the red brick cleanly on the first try.", '
+        '"Next time place the blue brick before the yellow one, or the tower is built in the wrong order."]\n'
         'Return ONLY JSON: {"score": int, "feedback": ["...", "..."]}'
     )
     raw = U.llm(prompt, system="You are a concise workplace trainer. Output strict JSON only.", max_tokens=250)

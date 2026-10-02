@@ -169,7 +169,7 @@ function ScoreCard({ result, isDemo, pending }: { result: SessionResult; isDemo:
                 )}
               </Frame>
               <Frame label={`Expert · ${expert?.take_label ?? 'best take'} · ${fmt(result.task.steps[m.stepIndex].expert_start_s)}`} tone="go">
-                <ExpertClip clip={expert} start={result.task.steps[m.stepIndex].expert_start_s} end={result.task.steps[m.stepIndex].expert_end_s} variant={m.stepIndex + 1} className="absolute inset-0" />
+                <ExpertClip clip={expert} start={result.task.steps[m.stepIndex].expert_start_s} end={result.task.steps[m.stepIndex].expert_end_s} poster={result.task.steps[m.stepIndex].expert_poster_url} variant={m.stepIndex + 1} className="absolute inset-0" />
               </Frame>
             </div>
           </motion.div>

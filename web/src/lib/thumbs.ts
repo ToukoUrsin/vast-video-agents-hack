@@ -23,7 +23,7 @@ export function getThumb(clip: Clip, size: 'sm' | 'lg' = 'sm', variant = 0): HTM
   const hit = cache.get(key)
   if (hit) return hit
   const dim = size === 'sm' ? THUMB_SM : THUMB_LG
-  const sloppy = clip.source === 'ours' && (clip.score ?? 100) < 70
+  const sloppy = clip.source === 'ours' && isSloppy(clip)
   // variant N > 0 on a task scene = the state right after step N
   const canvas = renderScene(sceneFor(clip), dim.w, dim.h, hashString(clip.clip_id) + variant * 7919, {
     step: variant > 0 ? variant : undefined,
@@ -41,6 +41,8 @@ export function getThumb(clip: Clip, size: 'sm' | 'lg' = 'sm', variant = 0): HTM
   }
   return canvas
 }
+
+export const isSloppy = (c: Clip) => (c.take_quality ? c.take_quality === 'sloppy' : (c.score ?? 100) < 70)
 
 export function sceneFor(clip: Clip): SceneKind {
   if (clip.source === 'ours') {

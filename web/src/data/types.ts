@@ -34,6 +34,8 @@ export interface Clip {
   /** Takes only: quality score 0–100 */
   score?: number
   duration_s?: number
+  /** Takes only: recorded as the good or the deliberately sloppy version */
+  take_quality?: 'good' | 'sloppy'
   /** Takes only: e.g. "Take 2" */
   take_label?: string
 }
@@ -52,6 +54,8 @@ export interface Step {
   expert_clip_id: string
   expert_start_s: number
   expert_end_s: number
+  /** Still frame of the expert doing this step (poster for the looping clip) */
+  expert_poster_url?: string
   /** Spoken/visible correction used by the mock checker */
   common_mistake?: string
 }

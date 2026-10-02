@@ -6,7 +6,21 @@ import { Thumb } from './Thumb'
  * Expert clip slot. Plays clip.video_url looped between start and end seconds when we
  * have real video; otherwise shows the (placeholder) thumbnail with a slow push-in.
  */
-export function ExpertClip({ clip, start, end, variant = 0, className = '' }: { clip: Clip | undefined; start: number; end: number; variant?: number; className?: string }) {
+export function ExpertClip({
+  clip,
+  start,
+  end,
+  variant = 0,
+  poster,
+  className = '',
+}: {
+  clip: Clip | undefined
+  start: number
+  end: number
+  variant?: number
+  poster?: string
+  className?: string
+}) {
   const ref = useRef<HTMLVideoElement>(null)
   useEffect(() => {
     const v = ref.current
@@ -22,7 +36,7 @@ export function ExpertClip({ clip, start, end, variant = 0, className = '' }: { 
   if (clip?.video_url)
     return (
       <div className={`${/\b(absolute|fixed)\b/.test(className) ? '' : 'relative'} overflow-hidden bg-surface ${className}`}>
-        <video ref={ref} src={clip.video_url} muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+        <video ref={ref} src={clip.video_url} poster={poster} muted playsInline preload="auto" className="absolute inset-0 h-full w-full object-cover" />
       </div>
     )
   return <Thumb clip={clip} variant={variant} className={className} kenBurns />

@@ -30,7 +30,8 @@ async function load(): Promise<LibraryData> {
  */
 function parkPlaceholderTakes(lib: LibraryData): LibraryData {
   const spot = (REAL_ARCHIVE.meta as { free_spot?: [number, number] } | undefined)?.free_spot
-  const ours = lib.clips.filter((c) => c.source === 'ours' && !c.thumbnail_url)
+  // our local takes (ids ours-*) until VSS-indexed takes with real embeddings replace them
+  const ours = lib.clips.filter((c) => c.source === 'ours' && c.clip_id.startsWith('ours-'))
   if (!spot || !ours.length || usePlaceholder()) return lib
   const taskIds = [...new Set(ours.map((c) => c.cluster_id))]
   const sx = spot[0] > 0 ? 1 : -1

@@ -78,7 +78,7 @@ export function Coach() {
     m: () => mock.push('mistake'),
   })
 
-  const elapsed = state.phase === 'idle' ? 0 : (now - state.startedAt) / 1000
+  const elapsed = state.phase === 'idle' ? 0 : Math.max(0, (now - state.startedAt) / 1000)
   const mistake = state.stepStatus === 'mistake'
 
   return (
@@ -218,7 +218,7 @@ function CorrectionCard({ state }: { state: CoachState }) {
       transition={{ type: 'spring', stiffness: 300, damping: 32 }}
     >
       <div className="relative">
-        <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={state.stepIndex + 1} className="aspect-video w-full" />
+        <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} poster={step.expert_poster_url} variant={state.stepIndex + 1} className="aspect-video w-full" />
         <div className="absolute left-2.5 top-2.5 rounded-full bg-stage/80 px-2.5 py-0.5 font-mono text-[13px] text-ink">
           Expert · {clip?.take_label ?? 'best take'}
         </div>
@@ -367,7 +367,7 @@ function Reference({ task, stepIndex }: { task: Cluster; stepIndex: number }) {
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4, delay: 0.3 }}
     >
-      <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} variant={stepIndex + 1} className="h-[72px] w-[128px] shrink-0 rounded-[8px]" />
+      <ExpertClip clip={clip} start={step.expert_start_s} end={step.expert_end_s} poster={step.expert_poster_url} variant={stepIndex + 1} className="h-[72px] w-[128px] shrink-0 rounded-[8px]" />
       <div>
         <p className="font-mono text-[15px] text-ink-3">Expert reference</p>
         <p className="mt-1 text-[18px] text-ink-2">

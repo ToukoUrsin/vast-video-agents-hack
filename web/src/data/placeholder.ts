@@ -99,7 +99,7 @@ export const CLUSTERS: Cluster[] = [
         expert_clip_id: 'ours-caps-1',
         expert_start_s: 12,
         expert_end_s: 16,
-        common_mistake: 'That cap goes on the other bottle.',
+        common_mistake: 'That green cap goes on the Coca-Cola, not the Mountain Dew.',
       },
       {
         id: 'cs5',
@@ -157,6 +157,27 @@ export const CLUSTERS: Cluster[] = [
   archive('car', 'Car passing houses', '#B3AC8F', ['Enter frame', 'Pass the driveway', 'Slow for the bump', 'Pass the houses', 'Leave frame']),
 ]
 
+/**
+ * Our recorded takes (web/public/takes, built by scripts/build-takes.sh from recordings/).
+ * Expert clip per step = take 1, looping a short window (seconds from take start) around the step.
+ */
+const TAKE_FILES: Record<string, string> = { 'cap-swap': 'cap-swap', 'cup-pyramid': 'cup-pyramid', 'vast-astronaut': 'vast-astronaut' }
+const EXPERT_WINDOWS: Record<string, Array<[number, number]>> = {
+  'cap-swap': [[0, 6], [14, 21], [21, 26], [30, 39], [30, 39]],
+  'cup-pyramid': [[2, 7], [7, 11], [12, 17], [17, 24]],
+  'vast-astronaut': [[0, 4], [3, 8], [7, 12], [11, 16], [15, 19]],
+}
+const TAKE_ID_PREFIX: Record<string, string> = { 'cap-swap': 'ours-caps', 'cup-pyramid': 'ours-cups', 'vast-astronaut': 'ours-astro' }
+for (const c of CLUSTERS) {
+  const win = EXPERT_WINDOWS[c.id]
+  if (!win) continue
+  c.steps.forEach((step, i) => {
+    step.expert_clip_id = `${TAKE_ID_PREFIX[c.id]}-1`
+    ;[step.expert_start_s, step.expert_end_s] = win[i]
+    step.expert_poster_url = `/takes/${TAKE_FILES[c.id]}-step${i + 1}.jpg`
+  })
+}
+
 function archive(id: string, label: string, tint: string, steps: string[]): Cluster {
   return {
     id,
@@ -173,16 +194,17 @@ function archive(id: string, label: string, tint: string, steps: string[]): Clus
   }
 }
 
-const TAKES: Array<{ id: string; task: string; take: number; score: number; caption: string }> = [
-  { id: 'ours-caps-1', task: 'cap-swap', take: 1, score: 95, caption: 'Person sitting on the floor uncaps both bottles, swaps them and puts each cap on the other bottle.' },
-  { id: 'ours-caps-2', task: 'cap-swap', take: 2, score: 87, caption: 'Person swaps the Mountain Dew and Coca-Cola and trades their caps, a little slower.' },
-  { id: 'ours-caps-3', task: 'cap-swap', take: 3, score: 52, caption: 'Person swaps the bottles but puts each cap back on its own bottle.' },
-  { id: 'ours-cups-1', task: 'cup-pyramid', take: 1, score: 93, caption: 'Person lines up three clear cups upside down, adds two and one on top, then nests them.' },
-  { id: 'ours-cups-2', task: 'cup-pyramid', take: 2, score: 86, caption: 'Person builds a three-two-one cup pyramid on the floor and takes it down into one stack.' },
-  { id: 'ours-cups-3', task: 'cup-pyramid', take: 3, score: 58, caption: 'Person starts the pyramid with only two cups on the bottom row.' },
-  { id: 'ours-astro-1', task: 'vast-astronaut', take: 1, score: 94, caption: 'Person builds the white VAST astronaut on its round base and puts the staff in its hand.' },
-  { id: 'ours-astro-2', task: 'vast-astronaut', take: 2, score: 85, caption: 'Person assembles legs, torso, helmeted head and staff on the base plate.' },
-  { id: 'ours-astro-3', task: 'vast-astronaut', take: 3, score: 50, caption: 'Person puts the head straight on the legs and leaves the torso on the floor.' },
+// Take ratings are plain ratings of the recordings (not all came from the live grader).
+const TAKES: Array<{ id: string; task: string; take: number; score: number; quality: 'good' | 'sloppy'; duration: number; caption: string }> = [
+  { id: 'ours-caps-1', task: 'cap-swap', take: 1, score: 92, quality: 'good', duration: 43, caption: 'Takes both caps off, swaps the Mountain Dew and the Coca-Cola, then puts each cap on the other bottle.' },
+  { id: 'ours-caps-2', task: 'cap-swap', take: 2, score: 88, quality: 'good', duration: 31, caption: 'Same swap, done a little faster: caps off, bottles swapped, caps traded.' },
+  { id: 'ours-caps-3', task: 'cap-swap', take: 3, score: 71, quality: 'sloppy', duration: 55, caption: 'Gets the swap right but is slow putting the caps back on.' },
+  { id: 'ours-cups-1', task: 'cup-pyramid', take: 1, score: 94, quality: 'good', duration: 25, caption: 'Three cups upside down, two on top, one on top, then nests them into one stack.' },
+  { id: 'ours-cups-2', task: 'cup-pyramid', take: 2, score: 90, quality: 'good', duration: 19, caption: 'Builds the three-two-one pyramid and takes it down into one stack.' },
+  { id: 'ours-cups-3', task: 'cup-pyramid', take: 3, score: 58, quality: 'sloppy', duration: 34, caption: 'Starts the pyramid with only two cups in the bottom row.' },
+  { id: 'ours-astro-1', task: 'vast-astronaut', take: 1, score: 90, quality: 'good', duration: 19, caption: 'Base plate down, legs, VAST torso, helmeted head, then the staff in its hand.' },
+  { id: 'ours-astro-2', task: 'vast-astronaut', take: 2, score: 86, quality: 'good', duration: 16, caption: 'Builds the white VAST astronaut on its round base, a little quicker.' },
+  { id: 'ours-astro-3', task: 'vast-astronaut', take: 3, score: 62, quality: 'sloppy', duration: 41, caption: 'Builds the astronaut with hesitations and rework along the way.' },
 ]
 
 function buildClips(): Clip[] {
@@ -223,13 +245,15 @@ function buildClips(): Clip[] {
       camera_id: 'floor-cam1',
       location: 'studio',
       source: 'ours',
-      thumbnail_url: null,
+      thumbnail_url: `/takes/${TAKE_FILES[t.task]}-${t.take}.jpg`,
+      video_url: `/takes/${TAKE_FILES[t.task]}-${t.take}.mp4`,
       caption: t.caption,
       embedding2d: { x: cx + off * 0.3, y: cy + off * 0.2 },
       cluster_id: t.task,
       score: t.score,
+      take_quality: t.quality,
       take_label: `Take ${t.take}`,
-      duration_s: 24 + Math.round(rand() * 14),
+      duration_s: t.duration,
     })
   }
   return clips

@@ -1,5 +1,6 @@
 import type { Clip, Cluster } from '../data/types'
 import type { Rect, TileTarget } from './field'
+import { isSloppy } from './thumbs'
 
 export function gridCells(n: number, area: Rect, cols: number, gap: number): Rect[] {
   const w = (area.w - gap * (cols - 1)) / cols
@@ -121,7 +122,7 @@ export function clusterLayout(
       const sorted = [...list].sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
       const { w, h, gap } = TAKE_TILE
       sorted.forEach((clip, i) => {
-        const sloppy = (clip.score ?? 100) < 70
+        const sloppy = isSloppy(clip)
         let r: Rect
         if (i === 0) r = { x: -w - gap / 2, y: -h / 2, w, h }
         else if (i === 1) r = { x: gap / 2, y: -h / 2, w, h }

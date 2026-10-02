@@ -24,7 +24,7 @@ export function HoverCard({ clip, rect }: { clip: Clip; rect: Rect }) {
     >
       <Thumb clip={clip} className="aspect-video w-full" />
       <div className="px-5 pb-5 pt-4">
-        <p className="font-mono text-[14px] text-ink-3">Cosmos Reason</p>
+        <p className="font-mono text-[14px] text-ink-3">{clip.source === 'stock' ? 'Cosmos Reason' : `${clip.take_label} · take rating ${clip.score}`}</p>
         <p className="mt-1.5 text-[20px] leading-[1.35] text-ink">{clip.caption}</p>
         <p className="mt-3 font-mono text-[15px] text-ink-3">
           {clip.source === 'ours' ? `${clip.take_label} · our recording` : `${site?.name} · ${clip.camera_id.split('-').pop()}`}

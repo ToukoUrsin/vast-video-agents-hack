@@ -33,10 +33,12 @@ export const fmt = (s: number) => {
 
 /** What the Score screen shows if no live session has run yet. */
 export function demoResult(task: Cluster): SessionResult {
-  const times = [6.2, 21.8, 29.4, 37.1, 52.6]
-  const steps: StepRecord[] = task.steps.map((step, i) => ({ step, outcome: i === 1 ? 'fixed' : 'done', at: times[i] }))
+  const times = [6.2, 18.4, 25.1, 41.7, 47.3]
+  // the sample mirrors the scripted demo mistake: the first step that has a known correction
+  const k = Math.max(0, task.steps.findIndex((s) => s.common_mistake))
+  const steps: StepRecord[] = task.steps.map((step, i) => ({ step, outcome: i === k ? 'fixed' : 'done', at: times[i] ?? times[times.length - 1] }))
   const mistakes: MistakeRecord[] = [
-    { stepIndex: 1, issue: task.steps[1].common_mistake ?? 'Step skipped.', at: 14.3, frameUrl: null },
+    { stepIndex: k, issue: task.steps[k].common_mistake ?? 'Step skipped.', at: Math.max(0, (times[k] ?? 30) - 6), frameUrl: null },
   ]
   return { task, steps, mistakes, durationS: 54.8, score: 82, feedback: buildFeedback(task, steps, mistakes) }
 }

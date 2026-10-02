@@ -15,6 +15,8 @@ and Score. Open `?screen=3` to land on the Coach.
 - Cloudflare quick tunnel (`~/cf tunnel --url http://127.0.0.1:8790`) gives the HTTPS URL. Log:
   `/tmp/understudy-cf.log`. Separate from the existing `cf tunnel --url ssh://localhost:22` process.
 - `@reboot` crontab entry restarts both (the URL changes after a reboot).
+- `*/10` crontab entry runs `~/understudy-app/warm.sh`: re-queries the 5 demo searches against
+  localhost so they stay in the server's 30 min search cache (VSS search takes ~20 s under load).
 
 ## Restart
 
@@ -32,7 +34,7 @@ rsync -az --exclude node_modules --exclude .venv --exclude __pycache__ -R \
 ssh vastvm 'cd understudy-app/server && ~/.local/bin/uv sync && ~/understudy-app/run.sh'
 ```
 
-Copies of the VM scripts: `deploy/vm-run.sh`, `deploy/vm-tunnel.sh`.
+Copies of the VM scripts: `deploy/vm-run.sh`, `deploy/vm-tunnel.sh`, `deploy/vm-warm.sh`.
 
 ## Abuse guard
 

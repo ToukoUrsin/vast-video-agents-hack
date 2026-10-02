@@ -259,15 +259,23 @@ def judge_prompt(label: str, steps: list[str], cur: int, obs: str) -> str:
         f"What the camera sees right now (from a vision model, may be slightly noisy): {obs}\n"
         "Which steps are evidently completed? A step counts as completed if its result is visible now, or if the "
         "scene can only be explained by it having been done (e.g. a cup with drink in it means the bottle was "
-        "opened and poured). Judge each step independently; do not assume earlier steps were done just because "
-        "later ones were.\n"
-        'Also: if something is clearly done wrong (wrong color, wrong count, wrong order), put one friendly spoken '
-        'correction under 14 words in "wrong", e.g. "That should be a blue brick, not green." Otherwise "".\n'
+        "opened and poured; a brick stacked on top means the brick or plate under it is there). The vision report "
+        "can miss things, so missing evidence for an early setup step is NOT a skip. A step is NOT completed only "
+        "when the report is consistent with it not having happened yet, or contradicts it (e.g. a different brick "
+        "sits where that step's brick should be). Count a later step as completed whenever its own result is "
+        "visible, even if an earlier step was skipped (e.g. a yellow brick on top counts the yellow step even "
+        "when the blue one is missing).\n"
+        'Also: ONLY if the report shows an object that should not be there (e.g. a brick of the wrong color in '
+        'the place of the current step, or the wrong count), put one friendly spoken correction under 14 words in '
+        '"wrong", e.g. "That should be a blue brick, not green." Something simply not done yet is NEVER wrong: '
+        'then "wrong" is "".\n'
         'Reply ONLY JSON: {"completed": [step numbers], "wrong": "..."}'
     )
 
 
 _llm_client = None
+# Step judge: DeepSeek V4 Flash scored best on our sequence-logic cases (12/12, 11/12) at ~0.5 s.
+JUDGE_MODEL = os.environ.get("UNDERSTUDY_JUDGE", "deepseek-ai/DeepSeek-V4-Flash")
 
 
 def _judge_sync(prompt: str) -> str:
@@ -275,9 +283,9 @@ def _judge_sync(prompt: str) -> str:
     if _llm_client is None:
         _llm_client = U.wandb_client()
     r = _llm_client.chat.completions.create(
-        model=U.LLM_MODEL,
+        model=JUDGE_MODEL,
         messages=[{"role": "system", "content": JUDGE_SYSTEM}, {"role": "user", "content": prompt}],
-        max_tokens=90,
+        max_tokens=200,
         temperature=0,
     )
     return r.choices[0].message.content or ""
@@ -304,6 +312,8 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
     if wrong.lower() in ("none", "n/a", "null", "-", "no"):
         wrong = ""
     # deterministic sequence logic on top of the LLM's per-step reading (1-based step numbers)
+    if visible and 1 not in visible:
+        visible.add(1)  # step 1 is setup: later work visible means it happened (vision often misses flat plates)
     advance = cur
     while (advance + 1) in visible:
         advance += 1
@@ -357,7 +367,7 @@ async def check_step(req: Request):
         return {"done": False, "state": "working", "issue": "", "error": f"{type(e).__name__}: {e}"[:200], "latency_ms": ms, "latencyMs": ms}
     ms = int((time.perf_counter() - t0) * 1000)
     out = {k: v for k, v in res.items() if k != "raw"}
-    out.update({"done": res["state"] == "done", "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL, "judge_model": U.LLM_MODEL})
+    out.update({"done": res["state"] == "done", "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL, "judge_model": JUDGE_MODEL})
     return out
 
 

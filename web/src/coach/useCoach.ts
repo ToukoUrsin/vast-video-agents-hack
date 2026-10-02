@@ -90,7 +90,9 @@ export function useCoach(opts: {
       while (!cancelled) {
         const s = ref.current
         if (s.phase !== 'coaching' || !s.task) break
-        const frames = await captureFrames(video.current, 4, 2000, s.startedAt)
+        // the server judges the latest frame; grab 2 quickly and keep checks ~1 s apart for fast reactions
+        const cycleStart = performance.now()
+        const frames = await captureFrames(video.current, 2, 250, s.startedAt)
         if (cancelled) break
         const cur = ref.current
         if (!cur.task || cur.phase !== 'coaching') break
@@ -126,6 +128,8 @@ export function useCoach(opts: {
           now: performance.now(),
           frameUrl: frames.at(-1)?.url ?? null,
         })
+        const elapsed = performance.now() - cycleStart
+        if (elapsed < 1000) await new Promise((r) => setTimeout(r, 1000 - elapsed))
       }
     })()
     return () => {

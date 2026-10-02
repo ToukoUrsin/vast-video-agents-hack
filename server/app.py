@@ -840,7 +840,7 @@ def _snapshot_clips() -> dict:
 async def _vss_req(method: str, path: str, **kw) -> httpx.Response:
     global _vss_http, _vss_token
     if _vss_http is None:
-        _vss_http = httpx.AsyncClient(base_url=U.INGRESS_URL, proxy=U.SOCKS, timeout=25)
+        _vss_http = httpx.AsyncClient(base_url=U.INGRESS_URL, proxy=U.SOCKS, timeout=50)
 
     async def login():
         global _vss_token
@@ -889,6 +889,10 @@ async def search(req: Request):
     if not q:
         return JSONResponse({"error": "empty query"}, 400)
     top_k = max(1, min(int(data.get("top_k") or 8), 24))
+    key = (q.lower(), top_k)
+    hit = _SEARCH_CACHE.get(key)
+    if hit and time.time() - hit[0] < 1800:  # VSS writes an LLM summary per search (~20 s under load)
+        return {**hit[1], "cached": True, "latency_ms": int((time.perf_counter() - t0) * 1000)}
     try:
         r = await _vss_req(
             "POST", "/api/v1/search", json={"query": q, "top_k": top_k, "llm_top_n": 1, "min_similarity": 0.15}
@@ -933,7 +937,7 @@ async def search(req: Request):
         )
     syn = j.get("llm_synthesis") or {}
     answer = _excerpt((syn.get("response") or "").replace("Answer", "", 1), 220) if syn.get("response") else None
-    return {
+    res = {
         "query": q,
         "results": out,
         "total": j.get("total"),
@@ -943,6 +947,34 @@ async def search(req: Request):
         "search_ms": round(j.get("search_time_ms") or 0),
         "latency_ms": int((time.perf_counter() - t0) * 1000),
     }
+    if out:
+        _SEARCH_CACHE[key] = (time.time(), res)
+    return res
+
+
+_SEARCH_CACHE: dict = {}
+DEMO_QUERIES = ["person swapping bottle caps", "forklift near a person", "someone stacking cups",
+                "people crossing the street", "truck changing lanes"]
+
+
+@app.on_event("startup")
+async def _prewarm_search() -> None:
+    """Warm the cache for the queries we show in the demo, in the background."""
+    from starlette.requests import Request as _R
+
+    async def warm():
+        for q in DEMO_QUERIES:
+            try:
+                body = json.dumps({"query": q}).encode()
+
+                async def receive(b=body):
+                    return {"type": "http.request", "body": b, "more_body": False}
+
+                await search(_R({"type": "http", "method": "POST", "headers": []}, receive))
+            except Exception as e:
+                print("prewarm failed:", q, e)
+
+    asyncio.create_task(warm())
 
 
 def _local_take(source: str) -> Path | None:

@@ -48,6 +48,13 @@ DEFAULT_TASKS = [
 TASK_DEFS = {
     "lego-tower": {
         "label": "Lego assembly",
+        "done_when": [
+            "a base plate is on the table",
+            "the bottom brick on the plate is red",
+            "the second brick, directly on the red one, is blue",
+            "the third brick, on top of the blue one, is yellow",
+            "the finished tower is on the right side of the table",
+        ],
         "steps": [
             "Place the base plate flat on the table",
             "Put a red brick on it",
@@ -62,6 +69,12 @@ TASK_DEFS = {
     },
     "cup-pyramid": {
         "label": "Cup pyramid",
+        "done_when": [
+            "exactly 3 cups stand upside down side by side in a bottom row",
+            "2 cups sit on top of the 3-cup bottom row (a bottom row with only 2 cups is wrong)",
+            "1 cup sits on top of the 2-cup row",
+            "all cups are nested into one single stack",
+        ],
         "steps": [
             "Place 3 cups upside down in a row",
             "Put 2 cups on top",
@@ -74,6 +87,13 @@ TASK_DEFS = {
     },
     "pour-drink": {
         "label": "Pour a drink",
+        "done_when": [
+            "a cup is on the table",
+            "the bottle cap is off (or drink is already in the cup)",
+            "the cup is about half full",
+            "the bottle cap is back on AND the cup has drink in it",
+            "the cup has been moved to the front",
+        ],
         "steps": [
             "Put a cup on the table",
             "Open the bottle",
@@ -252,8 +272,11 @@ async def cosmos_check_step(task: str, step: str, frames: list[bytes], prev: str
 JUDGE_SYSTEM = "You judge one step of a hands-on task from a vision model's scene report. Output strict JSON only."
 
 
-def judge_prompt(label: str, steps: list[str], cur: int, obs: str) -> str:
-    listing = "\n".join(f"{i + 1}. {st}" for i, st in enumerate(steps))
+def judge_prompt(label: str, steps: list[str], cur: int, obs: str, done_when: list[str] | None = None) -> str:
+    listing = "\n".join(
+        f"{i + 1}. {st}" + (f" (completed when: {done_when[i]})" if done_when and i < len(done_when) else "")
+        for i, st in enumerate(steps)
+    )
     return (
         f"Task: {label}. Steps in order:\n{listing}\n"
         f"What the camera sees right now (from a vision model, may be slightly noisy): {obs}\n"
@@ -300,7 +323,7 @@ async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict
     obs = U.parse_json(raw_obs)
     obs_text = json.dumps(obs) if obs is not None else raw_obs.strip()[:300]
     t1 = time.perf_counter()
-    raw = await asyncio.to_thread(_judge_sync, judge_prompt(d["label"], d["steps"], cur, obs_text))
+    raw = await asyncio.to_thread(_judge_sync, judge_prompt(d["label"], d["steps"], cur, obs_text, d.get("done_when")))
     t2 = time.perf_counter()
     p = U.parse_json(raw)
     p = p if isinstance(p, dict) else {}

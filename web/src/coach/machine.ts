@@ -93,10 +93,15 @@ export function coachReducer(s: CoachState, e: CoachEvent): CoachState {
       if (e.result.error) return base
       const { result } = e
       if (result.done) {
+        // catch-up: the person may be several steps ahead of the coach
+        const next = Math.min(s.task.steps.length, Math.max(s.stepIndex + 1, result.advanceTo ?? 0))
         const steps = s.steps.map((r, i) =>
-          i === s.stepIndex ? { ...r, outcome: s.stepStatus === 'mistake' ? ('fixed' as const) : ('done' as const), at: t } : r,
+          i === s.stepIndex
+            ? { ...r, outcome: s.stepStatus === 'mistake' ? ('fixed' as const) : ('done' as const), at: t }
+            : i > s.stepIndex && i < next
+              ? { ...r, outcome: 'done' as const, at: t }
+              : r,
         )
-        const next = s.stepIndex + 1
         if (next >= s.task.steps.length) {
           const done = { ...base, steps, stepStatus: 'watching' as const, issue: null, tick: s.tick + 1 }
           const durationS = t

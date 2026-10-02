@@ -42,6 +42,61 @@ DEFAULT_TASKS = [
     {"id": "pour-drink", "label": "Pour a drink", "prompt": "a person pouring a drink from a bottle into a cup on a table and closing the bottle cap"},
 ]
 
+# Steps + what Cosmos should look at for each task. Cosmos (vision) reports the scene state,
+# the W&B LLM judges the current step against the ordered steps. Two stages because the
+# small vision model perceives well but is weak at "was a step skipped" sequence logic.
+TASK_DEFS = {
+    "lego-tower": {
+        "label": "Lego assembly",
+        "steps": [
+            "Place the base plate flat on the table",
+            "Put a red brick on it",
+            "Put a blue brick on the red one",
+            "Put a yellow brick on top",
+            "Push the finished tower to the right side",
+        ],
+        "observe": 'Look at the most recent frame. Describe the Lego on the table. Count whole bricks only, '
+        'ignore studs, highlights and loose bricks lying beside the tower. Reply ONLY JSON: '
+        '{"base_plate_on_table": true|false, "bricks_stacked_bottom_to_top": ["red"|"blue"|"yellow"|"other", ...], '
+        '"tower_position": "left"|"center"|"right"|"none"}',
+    },
+    "cup-pyramid": {
+        "label": "Cup pyramid",
+        "steps": [
+            "Place 3 cups upside down in a row",
+            "Put 2 cups on top",
+            "Put 1 cup on top",
+            "Take the pyramid down into one stack",
+        ],
+        "observe": 'Look at the most recent frame. Describe the plastic cups on the table. Reply ONLY JSON: '
+        '{"bottom_row_cups": 0, "second_row_cups": 0, "top_row_cups": 0, '
+        '"all_cups_in_one_nested_stack": true|false, "cups_upside_down": true|false}',
+    },
+    "pour-drink": {
+        "label": "Pour a drink",
+        "steps": [
+            "Put a cup on the table",
+            "Open the bottle",
+            "Pour until the cup is about half full",
+            "Close the bottle cap",
+            "Move the cup forward",
+        ],
+        "observe": 'Look at the most recent frame. Describe the cup and bottle. Reply ONLY JSON: '
+        '{"cup_on_table": true|false, "bottle_cap": "on"|"off"|"unclear", '
+        '"cup_fill": "empty"|"a little"|"about half"|"full", "person_pouring_now": true|false, '
+        '"cup_position": "back"|"middle"|"front"}',
+    },
+}
+
+
+def task_def(task: str) -> tuple[str, dict] | tuple[None, None]:
+    t = (task or "").strip().lower()
+    for k, d in TASK_DEFS.items():
+        if t in (k, d["label"].lower()):
+            return k, d
+    return None, None
+
+
 app = FastAPI(title="Understudy server")
 app.add_middleware(
     CORSMiddleware,
@@ -194,6 +249,87 @@ async def cosmos_check_step(task: str, step: str, frames: list[bytes], prev: str
     return {"done": done, "state": state or "working", "issue": issue, "raw": raw[:300]}
 
 
+JUDGE_SYSTEM = "You judge one step of a hands-on task from a vision model's scene report. Output strict JSON only."
+
+
+def judge_prompt(label: str, steps: list[str], cur: int, obs: str) -> str:
+    listing = "\n".join(f"{i + 1}. {st}" for i, st in enumerate(steps))
+    return (
+        f"Task: {label}. Steps in order:\n{listing}\n"
+        f"What the camera sees right now (from a vision model, may be slightly noisy): {obs}\n"
+        "Which steps are evidently completed? A step counts as completed if its result is visible now, or if the "
+        "scene can only be explained by it having been done (e.g. a cup with drink in it means the bottle was "
+        "opened and poured). Judge each step independently; do not assume earlier steps were done just because "
+        "later ones were.\n"
+        'Also: if something is clearly done wrong (wrong color, wrong count, wrong order), put one friendly spoken '
+        'correction under 14 words in "wrong", e.g. "That should be a blue brick, not green." Otherwise "".\n'
+        'Reply ONLY JSON: {"completed": [step numbers], "wrong": "..."}'
+    )
+
+
+_llm_client = None
+
+
+def _judge_sync(prompt: str) -> str:
+    global _llm_client
+    if _llm_client is None:
+        _llm_client = U.wandb_client()
+    r = _llm_client.chat.completions.create(
+        model=U.LLM_MODEL,
+        messages=[{"role": "system", "content": JUDGE_SYSTEM}, {"role": "user", "content": prompt}],
+        max_tokens=90,
+        temperature=0,
+    )
+    return r.choices[0].message.content or ""
+
+
+@op(postprocess_inputs=_drop_frames)
+async def observe_and_judge(task_id: str, cur: int, frames: list[bytes]) -> dict:
+    d = TASK_DEFS[task_id]
+    t0 = time.perf_counter()
+    raw_obs = await U.reason(http, d["observe"], frames[-1:], max_tokens=160,
+                             system="You are a precise vision sensor. Output only one JSON object, no prose.")
+    obs = U.parse_json(raw_obs)
+    obs_text = json.dumps(obs) if obs is not None else raw_obs.strip()[:300]
+    t1 = time.perf_counter()
+    raw = await asyncio.to_thread(_judge_sync, judge_prompt(d["label"], d["steps"], cur, obs_text))
+    t2 = time.perf_counter()
+    p = U.parse_json(raw)
+    p = p if isinstance(p, dict) else {}
+    try:
+        visible = {int(x) for x in (p.get("completed") or []) if 1 <= int(x) <= len(d["steps"])}
+    except (TypeError, ValueError):
+        visible = set()
+    wrong = str(p.get("wrong") or "").strip()
+    if wrong.lower() in ("none", "n/a", "null", "-", "no"):
+        wrong = ""
+    # deterministic sequence logic on top of the LLM's per-step reading (1-based step numbers)
+    advance = cur
+    while (advance + 1) in visible:
+        advance += 1
+    issue = ""
+    if advance > cur:
+        state = "done"
+    elif any(v > cur + 1 for v in visible):
+        state = "mistake"
+        issue = f"You skipped a step. {d['steps'][cur]} first."
+        if wrong:
+            issue = wrong
+    elif wrong:
+        state, issue = "mistake", wrong
+    else:
+        state = "working"
+    return {
+        "state": state,
+        "issue": issue,
+        "advance_to": advance,
+        "completed_steps": sorted(visible),
+        "observation": obs if obs is not None else obs_text,
+        "observe_ms": int((t1 - t0) * 1000),
+        "judge_ms": int((t2 - t1) * 1000),
+    }
+
+
 @app.post("/api/check-step")
 async def check_step(req: Request):
     t0 = time.perf_counter()
@@ -202,13 +338,27 @@ async def check_step(req: Request):
     if not frames or not step:
         return JSONResponse({"done": False, "issue": "", "error": "need frames and step", "latency_ms": 0}, 400)
     frames = [_shrink(f) for f in frames[-4:]]
+    tid, d = task_def(task)
+    cur = None
+    if d:
+        norm = lambda x: " ".join(str(x).lower().split())
+        for i, st in enumerate(d["steps"]):
+            if norm(st) == norm(step):
+                cur = i
     try:
-        res = await cosmos_check_step(task, step, frames, data.get("prev_step"), data.get("next_step"))
+        if d and cur is not None:
+            res = await observe_and_judge(tid, cur, frames)
+            res["method"] = "cosmos-observe+llm-judge"
+        else:  # unknown task/step text: single-pass Cosmos judgement
+            res = await cosmos_check_step(task, step, frames, data.get("prev_step"), data.get("next_step"))
+            res["method"] = "cosmos-single-pass"
     except Exception as e:
         ms = int((time.perf_counter() - t0) * 1000)
-        return {"done": False, "issue": "", "error": f"cosmos: {type(e).__name__}", "latency_ms": ms, "latencyMs": ms}
+        return {"done": False, "state": "working", "issue": "", "error": f"{type(e).__name__}: {e}"[:200], "latency_ms": ms, "latencyMs": ms}
     ms = int((time.perf_counter() - t0) * 1000)
-    return {"done": res["done"], "state": res["state"], "issue": res["issue"], "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL}
+    out = {k: v for k, v in res.items() if k != "raw"}
+    out.update({"done": res["state"] == "done", "latency_ms": ms, "latencyMs": ms, "model": U.REASON_MODEL, "judge_model": U.LLM_MODEL})
+    return out
 
 
 # ------------------------------------------------------------------ identify
@@ -243,25 +393,34 @@ def softmax_conf(sims: np.ndarray, temp: float) -> np.ndarray:
     return e / e.sum()
 
 
-async def reason_pick(frames: list[bytes], cands: list[dict]) -> tuple[int, float]:
+async def reason_pick(frames: list[bytes], cands: list[dict]) -> tuple[int | None, float]:
     names = [c["label"] for c in cands]
+    desc = "; ".join(f'"{c["label"]}" ({c.get("prompt") or c["label"]})' for c in cands)
     prompt = (
-        "Which task is the person in these frames starting? Options: "
-        + "; ".join(f'"{n}"' for n in names)
-        + '. Answer ONLY JSON: {"task": "<one option exactly>", "confidence": 0.0-1.0}'
+        "Which task is set up or being done in these frames, judging by the objects on the table and the "
+        f"person's hands? Options: {desc}. Pick the option whose objects are visible even if nobody has started "
+        'yet. Only if none of these objects are visible at all, answer "none". '
+        'Answer ONLY JSON: {"task": "<one option label exactly, or none>", "confidence": 0.0-1.0}'
     )
-    raw = await U.reason(http, prompt, frames, max_tokens=60)
+    # the Cosmos endpoint rejects more than 5 images per request
+    step = max(1, len(frames) // 4)
+    raw = await U.reason(http, prompt, frames[::step][-4:], max_tokens=60)
     p = U.parse_json(raw) or {}
-    pick = str(p.get("task", "")).lower()
+    pick = str(p.get("task", "")).lower().strip() if isinstance(p, dict) else raw.lower()
+    if not pick or pick == "none":
+        return None, 0.0
     for i, n in enumerate(names):
         if n.lower() == pick or n.lower() in pick:
             return i, float(p.get("confidence", 0.7) or 0.7)
-    return 0, 0.3
+    return None, 0.0
 
 
 @op(postprocess_inputs=_drop_frames)
 async def identify_task(frames: list[bytes], cands: list[dict], method: str | None = None) -> dict:
     with_centroid = [c for c in cands if c.get("visual_centroid")]
+    if method != "embed" and not (with_centroid and len(with_centroid) == len(cands)):
+        i, c = await reason_pick(frames, cands)
+        return {"i": i, "confidence": c, "method": "cosmos-reason-pick", "scores": None}
     if method != "reason":
         try:
             mp4 = await asyncio.to_thread(frames_to_mp4, frames)
@@ -309,9 +468,15 @@ async def identify(req: Request):
     else:
         ours = [c for c in task_index()["clusters"] if c["source"] == "ours"]
         cands = ours or DEFAULT_TASKS
-    res = await identify_task(frames, cands, data.get("method"))
-    best = cands[res["i"]]
+    try:
+        res = await identify_task(frames, cands, data.get("method"))
+    except Exception as e:
+        ms = int((time.perf_counter() - t0) * 1000)
+        return {"task": None, "task_id": None, "confidence": 0.0, "error": f"{type(e).__name__}: {e}"[:200], "latency_ms": ms}
     ms = int((time.perf_counter() - t0) * 1000)
+    if res["i"] is None:
+        return {"task": None, "task_id": None, "confidence": 0.0, "method": res["method"], "latency_ms": ms}
+    best = cands[res["i"]]
     return {
         "task": best["label"],
         "task_id": best.get("id"),

@@ -19,6 +19,8 @@ export interface CheckResult {
   error?: string
   /** Present when the person is doing something wrong; spoken + shown as a correction */
   issue?: string
+  /** Index of the first step NOT yet completed, when the person is ahead of the coach (catch-up) */
+  advanceTo?: number
   /** Model latency to show in the status line; measured if omitted */
   latencyMs?: number
 }

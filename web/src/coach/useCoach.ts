@@ -83,6 +83,7 @@ export function useCoach(opts: {
     if (state.phase !== 'coaching') return
     let cancelled = false
     let doneStreak = 0
+    let mistakeStreak = 0
     let streakStep = -1
     ;(async () => {
       while (!cancelled) {
@@ -101,19 +102,24 @@ export function useCoach(opts: {
         const st = result.state ?? (result.done ? 'done' : result.issue ? 'mistake' : 'working')
         if (streakStep !== stepIndex) {
           doneStreak = 0
+          mistakeStreak = 0
           streakStep = stepIndex
         }
         doneStreak = st === 'done' ? doneStreak + 1 : 0
+        // one noisy frame must not trigger a spoken correction: need 2 mistake readings in a row (live)
+        mistakeStreak = st === 'mistake' && result.issue ? mistakeStreak + 1 : 0
         const act = st === 'done' && doneStreak >= requiredDone
         if (act) doneStreak = 0
+        const mistakeConfirmed = mistakeStreak >= requiredDone
         dispatch({
           type: 'CHECK',
           result: {
             done: act,
-            state: act ? 'done' : st === 'mistake' && result.issue ? 'mistake' : 'working',
-            // a confident mistake = the model gave a concrete correction
-            issue: st === 'mistake' && result.issue ? result.issue : undefined,
+            state: act ? 'done' : mistakeConfirmed ? 'mistake' : 'working',
+            // a confirmed mistake = 2 readings in a row with a concrete correction
+            issue: mistakeConfirmed ? result.issue : undefined,
             error: result.error,
+            advanceTo: act ? result.advanceTo : undefined,
           },
           latencyMs: result.latencyMs ?? measured,
           now: performance.now(),

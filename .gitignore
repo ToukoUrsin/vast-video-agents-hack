@@ -54,3 +54,4 @@ node_modules/
 dist/
 .env.local
 web/.vite/
+recordings/

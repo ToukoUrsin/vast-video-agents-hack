@@ -86,9 +86,10 @@ export class HttpStepChecker implements StepChecker {
         }),
       })
       if (!res.ok) return { done: false, state: 'working', error: `server ${res.status}` }
-      const j = (await res.json()) as { state?: string; done?: boolean; issue?: string; error?: string }
+      const j = (await res.json()) as { state?: string; done?: boolean; issue?: string; error?: string; advance_to?: number }
       const state = (['done', 'working', 'mistake'].includes(j.state ?? '') ? j.state : j.done ? 'done' : 'working') as CheckResult['state']
-      return { state, done: state === 'done', issue: j.issue || undefined, error: j.error }
+      const advanceTo = typeof j.advance_to === 'number' && j.advance_to > i ? j.advance_to : undefined
+      return { state, done: state === 'done', issue: j.issue || undefined, error: j.error, advanceTo }
     } catch (e) {
       return { done: false, state: 'working', error: (e as Error).message || 'unreachable' }
     }
@@ -114,7 +115,12 @@ export class HttpTaskRecognizer implements TaskRecognizer {
         body: JSON.stringify({ frames: frames.map((f) => f.url) }),
       })
       if (!res.ok) throw new Error(`server ${res.status}`)
-      const j = (await res.json()) as { task_id?: string; task?: string; confidence?: number }
+      const j = (await res.json()) as { task_id?: string | null; task?: string | null; confidence?: number }
+      if (!j.task_id && !j.task) {
+        // nothing recognisable in frame yet: keep watching, not an error
+        this.lastError = null
+        return null
+      }
       const task = this.resolve(j.task_id ?? '') ?? this.resolve(j.task ?? '')
       if (!task) throw new Error(`unknown task ${j.task_id ?? j.task}`)
       this.lastError = null
